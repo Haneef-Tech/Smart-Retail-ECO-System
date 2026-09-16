@@ -25,7 +25,10 @@ export default function ProfilePage() {
   const [orders, setOrders] = useState<Order[]>([])
 
   useEffect(() => {
-    if (!user) return
+    if (!user) {
+      setLoading(false)
+      return
+    }
     user.getIdToken().then((token) => {
       Promise.all([
         fetch('/api/customers/me', { headers: { Authorization: `Bearer ${token}` } }).then((r) => r.json()),

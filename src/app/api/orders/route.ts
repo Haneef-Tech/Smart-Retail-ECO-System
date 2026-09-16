@@ -19,12 +19,12 @@ async function getUserFromRequest(req: NextRequest): Promise<AuthenticatedUser |
 
   // The client sends a Firebase ID token, not the Firebase UID. Verify it and
   // use the decoded UID so orders are linked to the actual customer record.
-  if (process.env.FIREBASE_ADMIN_PROJECT_ID && adminAuth) {
+  if (adminAuth) {
     try {
       const decoded = await adminAuth.verifyIdToken(token)
       return { uid: decoded.uid, email: decoded.email, name: decoded.name }
     } catch {
-      return null
+      // Continue to the local development fallback below.
     }
   }
 
@@ -181,7 +181,7 @@ export async function POST(req: NextRequest) {
       return {
         productId: p.id,
         productName: p.name,
-        category: p.category?.name || item.category,
+        category: p.category?.name || 'General',
         quantity: item.quantity,
         unitPrice: p.sellingPrice,
         mrp: p.mrp,
