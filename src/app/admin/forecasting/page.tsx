@@ -137,7 +137,7 @@ export default function AutonomousOrderingPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
           {recommendations.length > 0 && (
             <button
               onClick={handleApproveAll}
@@ -278,16 +278,16 @@ export default function AutonomousOrderingPage() {
                 </div>
 
                 {/* 1-Click Approve PO Button */}
-                <div className="flex flex-col items-end justify-center shrink-0 border-t md:border-t-0 md:border-l border-gray-100 pt-3 md:pt-0 md:pl-5">
-                  <div className="text-right mb-2 hidden md:block">
-                    <span className="text-[11px] text-gray-400 block">Total PO Value</span>
-                    <span className="text-lg font-black text-gray-900">{formatPrice(rec.totalOrderCost)}</span>
+                <div className="flex flex-col sm:flex-row md:flex-col items-stretch sm:items-center md:items-end justify-between md:justify-center shrink-0 border-t md:border-t-0 md:border-l border-gray-100 pt-3 md:pt-0 md:pl-5 gap-3">
+                  <div className="text-left md:text-right">
+                    <span className="text-[10px] text-gray-400 block font-bold uppercase">Total PO Value</span>
+                    <span className="text-base md:text-lg font-black text-gray-900">{formatPrice(rec.totalOrderCost)}</span>
                   </div>
 
                   <button
                     onClick={() => handleApprovePo(rec)}
                     disabled={approvingId === rec.productId}
-                    className="w-full md:w-auto bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold px-5 py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 shadow-xs transition-colors"
+                    className="w-full sm:w-auto bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold px-5 py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 shadow-xs transition-colors"
                   >
                     {approvingId === rec.productId ? (
                       <RefreshCw size={14} className="animate-spin" />

@@ -212,8 +212,8 @@ export default function SalesUploadPage() {
       </div>
 
       {/* Upload Box */}
-      <div className="bg-white rounded-2xl border border-gray-100 p-6 shadow-xs space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-gray-100">
+      <div className="bg-white rounded-2xl border border-gray-100 p-4 sm:p-6 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-gray-100 gap-3">
           <div className="flex items-center gap-2">
             <UploadCloud size={20} className="text-green-600" />
             <h2 className="font-bold text-gray-900 text-sm">Upload Sales CSV Data</h2>
@@ -222,7 +222,7 @@ export default function SalesUploadPage() {
           <button
             type="button"
             onClick={() => setCsvText(SAMPLE_CSV)}
-            className="text-xs font-bold text-blue-600 hover:text-blue-700 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-200 flex items-center gap-1.5 transition-colors"
+            className="text-xs font-bold text-blue-600 hover:text-blue-700 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-200 flex items-center justify-center gap-1.5 transition-colors self-start sm:self-auto"
           >
             <FileSpreadsheet size={13} /> Load Sample Store Sales (15 Items)
           </button>
@@ -258,18 +258,18 @@ export default function SalesUploadPage() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between pt-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-2 gap-3">
             <span className="text-[11px] text-gray-400">
               Format: <code>date, product_name, sku, category, quantity, unit_price, total_revenue, payment_mode</code>
             </span>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
               {totalCount > 0 && (
                 <button
                   type="button"
                   onClick={handleClearSales}
                   disabled={clearing}
-                  className="px-4 py-2.5 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 text-xs font-bold flex items-center gap-1.5 transition-colors"
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-red-200 text-red-600 hover:bg-red-50 text-xs font-bold flex items-center justify-center gap-1.5 transition-colors"
                 >
                   <Trash2 size={13} /> {clearing ? 'Clearing...' : 'Clear Sales Data'}
                 </button>
@@ -278,7 +278,7 @@ export default function SalesUploadPage() {
               <button
                 type="submit"
                 disabled={uploading || !csvText.trim()}
-                className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold px-6 py-2.5 rounded-xl text-xs flex items-center gap-2 shadow-xs transition-colors"
+                className="w-full sm:w-auto bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold px-6 py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 shadow-xs transition-colors"
               >
                 {uploading ? <RefreshCw size={14} className="animate-spin" /> : <Sparkles size={14} />}
                 {uploading ? 'Ingesting & Training RAG...' : 'Upload & Train AI Assistant'}
@@ -290,14 +290,14 @@ export default function SalesUploadPage() {
 
       {/* Uploaded Records Table */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-xs overflow-hidden">
-        <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+        <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-1 bg-gray-50/50">
           <div className="flex items-center gap-2">
             <Database size={16} className="text-blue-600" />
             <h3 className="font-bold text-gray-900 text-sm">
               Uploaded Store Sales Records ({records.length} shown)
             </h3>
           </div>
-          <span className="text-xs text-gray-500 font-medium">
+          <span className="text-[11px] text-gray-500 font-medium">
             Trained into AI RAG Knowledge Layer
           </span>
         </div>
@@ -308,7 +308,7 @@ export default function SalesUploadPage() {
           </div>
         ) : (
           <div className="overflow-x-auto max-h-96">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left text-xs min-w-[650px]">
               <thead className="bg-gray-50 text-gray-600 font-bold border-b border-gray-100 sticky top-0">
                 <tr>
                   <th className="p-3.5">Date</th>

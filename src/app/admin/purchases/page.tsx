@@ -190,8 +190,93 @@ export default function SupplierDeliveriesPage() {
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+          {/* Mobile Card List (Visible on phones < md) */}
+          <div className="md:hidden divide-y divide-gray-100">
+            {purchases.map((po) => {
+              const badge = STATUS_BADGES[po.status] || { label: po.status, color: 'bg-gray-100 text-gray-800' }
+              return (
+                <div key={po.id} className="p-4 space-y-3 bg-white">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <span className="font-mono font-bold text-gray-900 text-sm">#{po.invoiceNumber}</span>
+                      <span className="text-gray-400 text-[11px] block">{formatDate(po.createdAt)}</span>
+                    </div>
+                    <span
+                      className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-black border ${badge.color}`}
+                    >
+                      {badge.label}
+                    </span>
+                  </div>
+
+                  <div className="text-xs bg-gray-50/80 p-3 rounded-xl space-y-1">
+                    <span className="font-bold text-gray-900 block flex items-center gap-1.5">
+                      <Building2 size={13} className="text-gray-400" />
+                      {po.supplier.name}
+                    </span>
+                    <span className="text-[11px] text-gray-500 font-mono block">
+                      [{po.supplier.code}] {po.supplier.phone || ''}
+                    </span>
+                    <span className="text-[11px] text-gray-500 block">
+                      Delivery: {po.expectedDelivery ? formatDate(po.expectedDelivery) : '1-2 business days'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1 text-xs">
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Items Ordered:</p>
+                    <div className="bg-gray-50/50 rounded-xl p-2.5 space-y-1 border border-gray-100">
+                      {po.purchaseItems.map((item) => (
+                        <div key={item.id} className="flex justify-between text-gray-800">
+                          <span className="font-medium truncate mr-2">{item.product.name}</span>
+                          <span className="text-green-700 font-bold shrink-0">{item.quantity} units</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                    <div>
+                      <span className="text-[10px] text-gray-400 block uppercase font-bold">Total PO Value</span>
+                      <span className="font-black text-gray-900 text-base">{formatPrice(po.totalAmount)}</span>
+                    </div>
+
+                    <div>
+                      {po.status === 'PENDING' && (
+                        <button
+                          onClick={() => handleUpdateStatus(po.id, 'IN_TRANSIT')}
+                          disabled={updatingId === po.id}
+                          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-colors"
+                        >
+                          <Truck size={13} />
+                          {updatingId === po.id ? 'Updating...' : 'Mark In-Transit'}
+                        </button>
+                      )}
+
+                      {po.status === 'IN_TRANSIT' && (
+                        <button
+                          onClick={() => handleUpdateStatus(po.id, 'DELIVERED')}
+                          disabled={updatingId === po.id}
+                          className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold px-3.5 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-colors"
+                        >
+                          <PackageCheck size={14} />
+                          {updatingId === po.id ? 'Restocking...' : 'Receive Stock'}
+                        </button>
+                      )}
+
+                      {po.status === 'DELIVERED' && (
+                        <span className="text-emerald-700 text-xs font-bold flex items-center gap-1">
+                          <CheckCircle2 size={14} /> Added to Inventory
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+
+          {/* Desktop Table (Visible on screens >= md) */}
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full text-left text-xs min-w-[750px]">
               <thead className="bg-gray-50 text-gray-600 font-bold border-b border-gray-100">
                 <tr>
                   <th className="p-4">PO Number &amp; Date</th>

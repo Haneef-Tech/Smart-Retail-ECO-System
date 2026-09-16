@@ -218,33 +218,33 @@ export default function AdminAiPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto flex flex-col h-[calc(100vh-6rem)]">
+    <div className="max-w-4xl mx-auto flex flex-col h-[calc(100vh-8rem)] md:h-[calc(100vh-6rem)]">
       {/* Clean, Polished Header Bar */}
-      <div className="flex items-center justify-between pb-3 mb-3 border-b border-gray-100 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-green-600 to-emerald-700 rounded-xl flex items-center justify-center text-white shadow-xs">
-            <Bot size={22} />
+      <div className="flex items-center justify-between pb-3 mb-3 border-b border-gray-100 shrink-0 gap-2">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-9 h-9 sm:w-10 sm:h-10 bg-gradient-to-br from-green-600 to-emerald-700 rounded-xl flex items-center justify-center text-white shadow-xs shrink-0">
+            <Bot size={20} />
           </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-base font-bold text-gray-900 leading-tight">AI Store Assistant</h1>
-              <span className="bg-green-100 text-green-800 text-[10px] font-bold px-2 py-0.5 rounded-full">
+          <div className="min-w-0">
+            <div className="flex items-center gap-1.5">
+              <h1 className="text-sm sm:text-base font-bold text-gray-900 leading-tight truncate">AI Store Assistant</h1>
+              <span className="bg-green-100 text-green-800 text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full shrink-0">
                 Connected
               </span>
             </div>
-            <p className="text-[11px] text-gray-500 font-medium flex items-center gap-1.5 mt-0.5">
-              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-              Live Store Inventory • Uploaded Sales Data • Verified Suppliers
+            <p className="text-[10px] sm:text-[11px] text-gray-500 font-medium flex items-center gap-1 mt-0.5 truncate">
+              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse shrink-0" />
+              Live Inventory • Uploaded Sales • Suppliers
             </p>
           </div>
         </div>
 
         <button
           onClick={() => setMessages([])}
-          className="text-xs font-semibold text-gray-500 hover:text-red-600 px-3 py-1.5 rounded-lg hover:bg-gray-100 flex items-center gap-1.5 transition-colors"
+          className="text-xs font-semibold text-gray-500 hover:text-red-600 px-2.5 py-1.5 rounded-lg hover:bg-gray-100 flex items-center gap-1 transition-colors shrink-0"
           title="Clear Conversation"
         >
-          <Trash2 size={14} /> Clear Chat
+          <Trash2 size={14} /> <span className="hidden sm:inline">Clear Chat</span>
         </button>
       </div>
 
@@ -310,13 +310,13 @@ export default function AdminAiPage() {
                     {m.actionablePos.map((rec) => (
                       <div
                         key={rec.id}
-                        className="bg-gray-50/90 hover:bg-gray-50 p-3 rounded-xl border border-gray-200/80 flex items-center justify-between gap-3 transition-colors"
+                        className="bg-gray-50/90 hover:bg-gray-50 p-3 rounded-xl border border-gray-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 transition-colors"
                       >
                         <div className="min-w-0">
                           <p className="font-bold text-xs sm:text-sm text-gray-900 truncate">
                             {rec.productName}
                           </p>
-                          <div className="flex items-center gap-2 mt-0.5 text-[11px] text-gray-500">
+                          <div className="flex items-center gap-2 mt-0.5 text-[11px] text-gray-500 flex-wrap">
                             <span className="inline-flex items-center gap-1">
                               <Building2 size={11} className="text-gray-400" />
                               {rec.supplierName}
@@ -331,7 +331,7 @@ export default function AdminAiPage() {
                         <button
                           onClick={() => handleExecutePO(rec.id, rec.suggestedQty)}
                           disabled={executingId === rec.id}
-                          className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold text-xs px-3.5 py-2 rounded-xl flex items-center gap-1.5 transition-colors shrink-0 shadow-2xs"
+                          className="w-full sm:w-auto bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold text-xs px-3.5 py-2 rounded-xl flex items-center justify-center gap-1.5 transition-colors shrink-0 shadow-2xs"
                         >
                           {executingId === rec.id ? (
                             <RefreshCw size={12} className="animate-spin" />

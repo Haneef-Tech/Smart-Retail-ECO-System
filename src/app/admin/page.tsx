@@ -237,10 +237,10 @@ export default async function AdminDashboardPage() {
 
       {/* Critical Stock Alerts Table */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-xs overflow-hidden">
-        <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
+        <div className="p-4 sm:p-5 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gray-50/50">
           <div>
             <h2 className="font-bold text-gray-900 text-sm flex items-center gap-2">
-              <AlertTriangle size={16} className="text-amber-500" />
+              <AlertTriangle size={16} className="text-amber-500 shrink-0" />
               Stock Health &amp; Autonomous Reorder Triggers
             </h2>
             <p className="text-xs text-gray-500 mt-0.5">
@@ -249,7 +249,7 @@ export default async function AdminDashboardPage() {
           </div>
           <Link
             href="/admin/forecasting"
-            className="text-xs font-bold text-green-700 hover:text-green-800 bg-green-50 px-3 py-1.5 rounded-lg border border-green-200 flex items-center gap-1"
+            className="text-xs font-bold text-green-700 hover:text-green-800 bg-green-50 px-3 py-1.5 rounded-lg border border-green-200 flex items-center gap-1 self-start sm:self-auto shrink-0"
           >
             Approve in Reorder Center <ArrowRight size={12} />
           </Link>
@@ -261,7 +261,7 @@ export default async function AdminDashboardPage() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left">
+            <table className="w-full text-xs text-left min-w-[650px]">
               <thead className="bg-gray-50 text-gray-600 font-bold border-b border-gray-100">
                 <tr>
                   <th className="p-4">Product Name</th>

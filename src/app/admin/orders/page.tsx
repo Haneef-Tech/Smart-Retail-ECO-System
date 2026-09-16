@@ -145,8 +145,98 @@ export default function AdminOrdersPage() {
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-xs overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+          {/* Mobile Card List (Visible on phones & small screens < md) */}
+          <div className="md:hidden divide-y divide-gray-100">
+            {filteredOrders.map((order) => (
+              <div key={order.id} className="p-4 space-y-3 bg-white">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <span className="font-mono font-bold text-gray-900 text-sm">#{order.id.slice(0, 8)}</span>
+                    <span className="text-gray-400 text-[11px] block">{formatDate(order.createdAt)}</span>
+                    {order.bill?.billNumber && (
+                      <span className="text-[10px] text-green-700 font-semibold block mt-0.5">
+                        Bill: {order.bill.billNumber}
+                      </span>
+                    )}
+                  </div>
+                  <span
+                    className={`inline-block px-2.5 py-1 rounded-full text-[10px] font-black border ${
+                      STATUS_COLORS[order.status] || 'bg-gray-100 text-gray-800'
+                    }`}
+                  >
+                    {order.status}
+                  </span>
+                </div>
+
+                <div className="text-xs bg-gray-50/80 p-3 rounded-xl space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-gray-900">{order.customer?.name || 'Walk-in Customer'}</span>
+                    {order.customer?.phone && (
+                      <span className="text-gray-500 font-mono text-[11px]">{order.customer.phone}</span>
+                    )}
+                  </div>
+                  {order.deliveryAddress && (
+                    <p className="text-gray-500 text-[11px] pt-1 border-t border-gray-200/60 leading-tight">
+                      📍 {order.deliveryAddress}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-1 text-xs">
+                  <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Ordered Items:</p>
+                  <div className="bg-gray-50/50 rounded-xl p-2.5 space-y-1 border border-gray-100">
+                    {order.orderItems.map((item) => (
+                      <div key={item.id} className="flex justify-between text-gray-700">
+                        <span className="font-medium truncate mr-2">{item.productName}</span>
+                        <span className="text-gray-500 shrink-0 font-semibold">× {item.quantity}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between pt-2 border-t border-gray-100">
+                  <div>
+                    <span className="text-[10px] text-gray-400 block uppercase font-bold">Total Amount</span>
+                    <span className="font-black text-gray-900 text-base">{formatPrice(order.total)}</span>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {order.status === 'PENDING' && (
+                      <button
+                        onClick={() => handleUpdateStatus(order.id, 'CONFIRMED')}
+                        disabled={updatingId === order.id}
+                        className="bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-colors"
+                      >
+                        <CheckCircle size={14} />
+                        {updatingId === order.id ? 'Confirming...' : 'Confirm Order'}
+                      </button>
+                    )}
+
+                    {order.status === 'CONFIRMED' && (
+                      <button
+                        onClick={() => handleUpdateStatus(order.id, 'DELIVERED')}
+                        disabled={updatingId === order.id}
+                        className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-colors"
+                      >
+                        <Truck size={14} />
+                        {updatingId === order.id ? 'Updating...' : 'Mark Delivered'}
+                      </button>
+                    )}
+
+                    {order.status === 'DELIVERED' && (
+                      <span className="text-green-600 text-xs font-bold flex items-center gap-1">
+                        <CheckCircle size={14} /> Completed
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop Table (Visible on screens >= md) */}
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full text-left text-xs min-w-[700px]">
               <thead className="bg-gray-50 text-gray-600 font-bold border-b border-gray-100">
                 <tr>
                   <th className="p-4">Order ID &amp; Date</th>

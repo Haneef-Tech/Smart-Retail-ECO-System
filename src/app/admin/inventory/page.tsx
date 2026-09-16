@@ -271,10 +271,126 @@ export default function AdminInventoryPage() {
         />
       </div>
 
-      {/* Inventory Entry Table */}
+      {/* Inventory Entry Table & Mobile Cards */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-xs overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
+        {/* Mobile Inventory Cards (Visible on phones < md) */}
+        <div className="md:hidden divide-y divide-gray-100">
+          {filtered.map((item) => (
+            <div key={item.id} className="p-4 space-y-3 bg-white">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="font-mono font-bold text-xs text-gray-900 bg-gray-100 px-2 py-0.5 rounded-md">
+                      {item.sku}
+                    </span>
+                    <span className="text-[11px] font-bold text-gray-500 bg-gray-50 px-2 py-0.5 rounded-md border border-gray-200/60">
+                      {item.category}
+                    </span>
+                  </div>
+                  <h4 className="font-bold text-gray-900 text-sm mt-1.5">{item.name}</h4>
+                  <span className="text-gray-400 text-xs">{item.unit}</span>
+                </div>
+
+                <div className="text-right shrink-0">
+                  <span className="font-black text-gray-900 text-sm block">
+                    {formatPrice(item.sellingPrice)}
+                  </span>
+                  {item.mrp > item.sellingPrice && (
+                    <span className="text-[10px] text-gray-400 line-through block">
+                      MRP {formatPrice(item.mrp)}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between text-xs text-gray-600 bg-gray-50/70 p-2.5 rounded-xl border border-gray-100">
+                <span className="inline-flex items-center gap-1">
+                  <Building2 size={12} className="text-gray-400" />
+                  {item.supplier}
+                </span>
+                <span className="text-[11px] text-gray-400 font-medium">
+                  Reorder at: <strong className="text-gray-700">{item.reorderLevel} units</strong>
+                </span>
+              </div>
+
+              {/* Stock Counter and Quick Adjustments */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2 border-t border-gray-100">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500 font-semibold">Stock:</span>
+                  {editingStockId === item.id ? (
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        value={editQtyInput}
+                        onChange={(e) => setEditQtyInput(e.target.value)}
+                        className="w-16 px-2 py-1 border border-green-500 rounded-lg text-center font-bold text-xs"
+                        autoFocus
+                      />
+                      <button
+                        onClick={() => handleSetStock(item.id)}
+                        className="px-2 py-1 bg-green-600 text-white rounded-lg text-[10px] font-bold"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => setEditingStockId(null)}
+                        className="px-1.5 py-1 text-gray-400 hover:text-gray-600"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        setEditingStockId(item.id)
+                        setEditQtyInput(String(item.availableQuantity))
+                      }}
+                      title="Click to manually edit exact stock units"
+                      className={`px-3 py-1 rounded-md font-black text-xs transition-colors ${
+                        item.availableQuantity <= item.reorderLevel
+                          ? 'bg-amber-100 text-amber-900 hover:bg-amber-200'
+                          : 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                      }`}
+                    >
+                      {item.availableQuantity} units ✎
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5 self-end sm:self-auto">
+                  <button
+                    onClick={() => handleQuickAdjust(item.id, 10)}
+                    disabled={updatingId === item.id}
+                    className="px-2.5 py-1 bg-green-50 hover:bg-green-100 text-green-800 font-bold rounded-lg text-[11px] border border-green-200 transition-colors"
+                    title="Add 10 units"
+                  >
+                    +10
+                  </button>
+                  <button
+                    onClick={() => handleQuickAdjust(item.id, 25)}
+                    disabled={updatingId === item.id}
+                    className="px-2.5 py-1 bg-green-50 hover:bg-green-100 text-green-800 font-bold rounded-lg text-[11px] border border-green-200 transition-colors"
+                    title="Add 25 units"
+                  >
+                    +25
+                  </button>
+                  <button
+                    onClick={() => handleQuickAdjust(item.id, -5)}
+                    disabled={updatingId === item.id || item.availableQuantity < 5}
+                    className="px-2.5 py-1 bg-red-50 hover:bg-red-100 text-red-700 font-bold rounded-lg text-[11px] border border-red-200 transition-colors disabled:opacity-30"
+                    title="Subtract 5 units"
+                  >
+                    -5
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Desktop Table (Visible on screens >= md) */}
+        <div className="hidden md:block overflow-x-auto">
+          <table className="w-full text-left text-xs min-w-[750px]">
             <thead className="bg-gray-50 text-gray-600 font-bold border-b border-gray-100">
               <tr>
                 <th className="p-4">SKU / ID</th>
@@ -420,7 +536,7 @@ export default function AdminInventoryPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-gray-700 mb-1">SKU / Code</label>
                   <input
@@ -444,7 +560,7 @@ export default function AdminInventoryPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-gray-700 mb-1">Category *</label>
                   <select
@@ -479,7 +595,7 @@ export default function AdminInventoryPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-gray-700 mb-1">MRP (₹) *</label>
                   <input
@@ -507,7 +623,7 @@ export default function AdminInventoryPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block font-bold text-gray-700 mb-1">Initial Available Units *</label>
                   <input

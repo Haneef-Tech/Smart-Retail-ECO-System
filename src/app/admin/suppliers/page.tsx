@@ -136,7 +136,7 @@ export default function AdminSuppliersPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setShowAddModal(true)}
             className="bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-2 shadow-xs transition-colors"
@@ -191,9 +191,9 @@ export default function AdminSuppliersPage() {
             >
               <div className="space-y-3">
                 {/* Header line */}
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-mono font-black text-xs text-green-800 bg-green-50 px-2.5 py-0.5 rounded-md border border-green-200">
                         {s.code}
                       </span>
@@ -209,12 +209,12 @@ export default function AdminSuppliersPage() {
                     )}
                   </div>
 
-                  <div className="text-right shrink-0">
+                  <div className="flex sm:flex-col items-center sm:items-end justify-between gap-2 shrink-0 pt-1 sm:pt-0 border-t sm:border-t-0 border-gray-100">
                     <span className="inline-flex items-center gap-1 text-xs font-black bg-amber-50 text-amber-700 px-2 py-1 rounded-lg border border-amber-200">
                       <Star size={12} className="fill-amber-400 text-amber-500" /> {s.rating} / 5.0
                     </span>
-                    <span className="block text-[10px] text-gray-400 font-bold mt-1 flex items-center justify-end gap-1">
-                      <Clock size={10} /> {s.leadTimeDays} days lead time
+                    <span className="text-[10px] text-gray-400 font-bold flex items-center gap-1">
+                      <Clock size={10} /> {s.leadTimeDays}d lead time
                     </span>
                   </div>
                 </div>
@@ -368,7 +368,7 @@ export default function AdminSuppliersPage() {
                 />
               </div>
 
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block font-bold text-gray-700 mb-1">Categories</label>
                   <input
