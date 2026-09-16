@@ -1,0 +1,412 @@
+// Prisma schema file for Phase 3 Data Engineering & Retail Ecosystem
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite" // Can be switched to "postgresql" via DATABASE_URL
+  url      = env("DATABASE_URL")
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  name        String   @unique // ADMIN, STAFF, CUSTOMER
+  description String?
+  users       User[]
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String?
+  roleId       String
+  role         Role     @relation(fields: [roleId], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  customer            Customer?
+  auditLogs           AuditLog[]
+  createdTransactions InventoryTransaction[] @relation("CreatedTransactions")
+}
+
+model Customer {
+  id          String   @id
+  userId      String?  @unique
+  user        User?    @relation(fields: [userId], references: [id])
+  name        String
+  email       String   @unique
+  phone       String
+  houseStreet String
+  area        String
+  city        String
+  state       String
+  pincode     String
+  createdAt   DateTime @default(now())
+
+  orders  Order[]
+  sales   Sale[]
+  returns Return[]
+}
+
+model Category {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  taxRate     Float    @default(0.0)
+  description String?
+
+  products Product[]
+}
+
+model Supplier {
+  id           String   @id @default(uuid())
+  code         String   @unique
+  name         String
+  contactName  String?
+  email        String?
+  phone        String?
+  address      String?
+  categories   String?
+  rating       Float    @default(4.8)
+  leadTimeDays Int      @default(2)
+  createdAt    DateTime @default(now())
+
+  products  Product[]
+  purchases Purchase[]
+}
+
+model Product {
+  id           String    @id
+  sku          String    @unique
+  name         String
+  description  String?
+  categoryId   String
+  category     Category  @relation(fields: [categoryId], references: [id])
+  brand        String?
+  unit         String    @default("1 pc")
+  mrp          Float
+  sellingPrice Float
+  taxRate      Float     @default(0.0)
+  imageUrl     String
+  supplierId   String?
+  supplier     Supplier? @relation(fields: [supplierId], references: [id])
+  reorderLevel Int       @default(10)
+  safetyStock  Int       @default(5)
+  leadTimeDays Int       @default(3)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  inventory             Inventory?
+  inventoryTransactions InventoryTransaction[]
+  orderItems            OrderItem[]
+  purchaseItems         PurchaseItem[]
+  saleItems             SaleItem[]
+  damages               Damage[]
+  stockAdjustments      StockAdjustment[]
+  forecasts             Forecast[]
+  aiRecommendations     AiRecommendation[]
+  productPerformances   ProductPerformance[]
+  inventorySnapshots    InventorySnapshot[]
+}
+
+model Inventory {
+  id                String   @id @default(uuid())
+  productId         String   @unique
+  product           Product  @relation(fields: [productId], references: [id])
+  availableQuantity Int      @default(0)
+  reservedQuantity  Int      @default(0)
+  damagedQuantity   Int      @default(0)
+  updatedAt         DateTime @updatedAt
+}
+
+model InventoryTransaction {
+  id               String   @id @default(uuid())
+  productId        String
+  product          Product  @relation(fields: [productId], references: [id])
+  transactionType  String // PURCHASE, SALE, RETURN, DAMAGE, ADJUSTMENT, RESERVATION, RELEASE
+  quantity         Int
+  previousQuantity Int
+  newQuantity      Int
+  referenceType    String? // ORDER, PURCHASE, RETURN, DAMAGE, ADJUSTMENT, CSV_IMPORT
+  referenceId      String?
+  createdBy        String?
+  user             User?    @relation("CreatedTransactions", fields: [createdBy], references: [id])
+  createdAt        DateTime @default(now())
+}
+
+model Purchase {
+  id               String    @id @default(uuid())
+  invoiceNumber    String    @unique
+  supplierId       String
+  supplier         Supplier  @relation(fields: [supplierId], references: [id])
+  status           String    @default("COMPLETED")
+  totalAmount      Float
+  expectedDelivery DateTime?
+  notes            String?
+  createdAt        DateTime  @default(now())
+
+  purchaseItems PurchaseItem[]
+}
+
+model PurchaseItem {
+  id            String   @id @default(uuid())
+  purchaseId    String
+  purchase      Purchase @relation(fields: [purchaseId], references: [id])
+  productId     String
+  product       Product  @relation(fields: [productId], references: [id])
+  quantity      Int
+  purchasePrice Float
+  subtotal      Float
+}
+
+model Order {
+  id              String   @id @default(uuid())
+  customerId      String
+  customer        Customer @relation(fields: [customerId], references: [id])
+  status          String   @default("PENDING")
+  subtotal        Float
+  totalDiscount   Float
+  totalTax        Float
+  total           Float
+  notes           String?
+  deliveryAddress String
+  createdAt       DateTime @default(now())
+
+  orderItems OrderItem[]
+  bill       Bill?
+  sale       Sale?
+  returns    Return[]
+}
+
+model OrderItem {
+  id          String  @id @default(uuid())
+  orderId     String
+  order       Order   @relation(fields: [orderId], references: [id])
+  productId   String
+  product     Product @relation(fields: [productId], references: [id])
+  productName String
+  category    String
+  quantity    Int
+  unitPrice   Float
+  mrp         Float
+  discount    Float
+  gstRate     Float
+  gstAmount   Float
+}
+
+model Sale {
+  id          String    @id @default(uuid())
+  orderId     String?   @unique
+  order       Order?    @relation(fields: [orderId], references: [id])
+  customerId  String?
+  customer    Customer? @relation(fields: [customerId], references: [id])
+  totalAmount Float
+  taxAmount   Float
+  paymentMode String    @default("ONLINE")
+  createdAt   DateTime  @default(now())
+
+  saleItems SaleItem[]
+}
+
+model SaleItem {
+  id        String  @id @default(uuid())
+  saleId    String
+  sale      Sale    @relation(fields: [saleId], references: [id])
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+  quantity  Int
+  unitPrice Float
+  taxAmount Float
+  total     Float
+}
+
+model Bill {
+  id            String   @id @default(uuid())
+  billNumber    String   @unique
+  orderId       String   @unique
+  order         Order    @relation(fields: [orderId], references: [id])
+  paymentStatus String   @default("PAID")
+  generatedAt   DateTime @default(now())
+}
+
+model Return {
+  id           String   @id @default(uuid())
+  orderId      String
+  order        Order    @relation(fields: [orderId], references: [id])
+  customerId   String
+  customer     Customer @relation(fields: [customerId], references: [id])
+  reason       String
+  refundAmount Float
+  status       String   @default("COMPLETED")
+  createdAt    DateTime @default(now())
+}
+
+model Damage {
+  id        String   @id @default(uuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id])
+  quantity  Int
+  reason    String
+  reportedBy String?
+  createdAt DateTime @default(now())
+}
+
+model StockAdjustment {
+  id           String   @id @default(uuid())
+  productId    String
+  product      Product  @relation(fields: [productId], references: [id])
+  quantityDiff Int
+  reason       String
+  adjustedBy   String?
+  createdAt    DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  userEmail String?
+  action    String
+  entity    String
+  entityId  String?
+  details   String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+}
+
+model GstRate {
+  id        String   @id @default(uuid())
+  category  String   @unique
+  rate      Float
+  updatedAt DateTime @updatedAt
+}
+
+model Pincode {
+  pincode String @id
+  area    String
+  city    String
+  state   String
+}
+
+// Data Engineering & Analytics Fact Tables
+model DailySalesFact {
+  id                String   @id @default(uuid())
+  date              String   @unique // YYYY-MM-DD
+  totalRevenue      Float    @default(0.0)
+  totalCost         Float    @default(0.0)
+  grossProfit       Float    @default(0.0)
+  orderCount        Int      @default(0)
+  unitsSold         Int      @default(0)
+  averageOrderValue Float    @default(0.0)
+  createdAt         DateTime @default(now())
+}
+
+model MonthlySalesFact {
+  id           String   @id @default(uuid())
+  yearMonth    String   @unique // YYYY-MM
+  year         Int
+  month        Int
+  totalRevenue Float    @default(0.0)
+  grossProfit  Float    @default(0.0)
+  orderCount   Int      @default(0)
+  unitsSold    Int      @default(0)
+  growthRate   Float    @default(0.0)
+  createdAt    DateTime @default(now())
+}
+
+model InventorySnapshot {
+  id                String   @id @default(uuid())
+  snapshotDate      DateTime @default(now())
+  productId         String
+  product           Product  @relation(fields: [productId], references: [id])
+  sku               String
+  availableQuantity Int
+  reservedQuantity  Int
+  damagedQuantity   Int
+  totalValuation    Float
+  stockCoverageDays Float
+  createdAt         DateTime @default(now())
+}
+
+model ProductPerformance {
+  id                String   @id @default(uuid())
+  productId         String
+  product           Product  @relation(fields: [productId], references: [id])
+  sku               String
+  productName       String
+  categoryName      String
+  unitsSold30Days   Int      @default(0)
+  revenue30Days     Float    @default(0.0)
+  avgDailySales     Float    @default(0.0)
+  stockCoverageDays Float    @default(0.0)
+  velocityClass     String   @default("NORMAL") // FAST_MOVING, NORMAL, SLOW_MOVING, DEAD_STOCK
+  lastCalculatedAt  DateTime @default(now())
+}
+
+model SeasonalEvent {
+  id                  String   @id @default(uuid())
+  name                String   @unique
+  startDate           DateTime
+  endDate             DateTime
+  affectedCategories  String   // Comma-separated categories e.g. "Accessories,Stationery"
+  description         String?
+  historicalLiftPercent Float  @default(0.0)
+  createdAt           DateTime @default(now())
+}
+
+model HistoricalSale {
+  id        String   @id @default(uuid())
+  sku       String
+  date      DateTime
+  quantity  Int
+  revenue   Float
+}
+
+model Forecast {
+  id                String   @id @default(uuid())
+  productId         String
+  product           Product  @relation(fields: [productId], references: [id])
+  period            String
+  predictedQuantity Int
+  confidenceScore   Float
+  createdAt         DateTime @default(now())
+}
+
+model AiRecommendation {
+  id             String   @id @default(uuid())
+  productId      String
+  product        Product  @relation(fields: [productId], references: [id])
+  recommendation String
+  suggestedQty   Int
+  reason         String
+  status         String   @default("PENDING")
+  createdAt      DateTime @default(now())
+}
+
+model KnowledgeDocument {
+  id           String   @id @default(uuid())
+  title        String
+  content      String
+  category     String
+  documentType String   @default("POLICY") // POLICY, SUPPLIER, GST, COMPLIANCE, REPORT, SALES
+  productId    String?
+  year         Int?
+  month        Int?
+  source       String   @default("MANUAL")
+  createdAt    DateTime @default(now())
+}
+
+model StoreSaleRecord {
+  id           String   @id @default(uuid())
+  date         String   // YYYY-MM-DD
+  sku          String?
+  productName  String
+  category     String?
+  quantity     Int
+  unitPrice    Float
+  totalRevenue Float
+  paymentMode  String   @default("CASH")
+  createdAt    DateTime @default(now())
+}
+
