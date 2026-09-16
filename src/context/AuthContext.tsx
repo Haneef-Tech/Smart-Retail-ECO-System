@@ -38,13 +38,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Check local storage / cookie for admin session fallback
     const savedAdmin = localStorage.getItem('admin_session')
     if (savedAdmin) {
-      const parsed = JSON.parse(savedAdmin)
-      setUser({
-        uid: parsed.uid,
-        email: parsed.email,
-        getIdToken: async () => parsed.token,
-      })
-      document.cookie = `firebase-token=${parsed.token}; path=/; max-age=86400; SameSite=Lax`
+      try {
+        const parsed: unknown = JSON.parse(savedAdmin)
+        if (
+          typeof parsed === 'object' &&
+          parsed !== null &&
+          'uid' in parsed &&
+          'email' in parsed &&
+          'token' in parsed &&
+          typeof parsed.uid === 'string' &&
+          typeof parsed.email === 'string' &&
+          typeof parsed.token === 'string'
+        ) {
+          setUser({
+            uid: parsed.uid,
+            email: parsed.email,
+            getIdToken: async () => parsed.token,
+          })
+          document.cookie = `firebase-token=${parsed.token}; path=/; max-age=86400; SameSite=Lax`
+        } else {
+          localStorage.removeItem('admin_session')
+        }
+      } catch {
+        localStorage.removeItem('admin_session')
+        document.cookie = 'firebase-token=; path=/; max-age=0'
+      }
     }
 
     let unsub = () => {}
