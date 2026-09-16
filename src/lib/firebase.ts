@@ -1,5 +1,5 @@
-import { initializeApp, getApps, getApp } from 'firebase/app'
-import { getAuth } from 'firebase/auth'
+import { initializeApp, getApps, getApp, type FirebaseApp } from 'firebase/app'
+import { getAuth, type Auth } from 'firebase/auth'
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || 'AIzaSyCV8Qam7NKLHKQOhpZTNDRlmMPLRdr3JNU',
@@ -10,6 +10,21 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || '1:608701607267:web:ae3218c1b865c574897756',
 }
 
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp()
-export const auth = getAuth(app)
+function initFirebaseSafely(): { app: FirebaseApp; auth: Auth } {
+  try {
+    const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp()
+    const auth = getAuth(app)
+    return { app, auth }
+  } catch (err) {
+    // Prevent SSR / SSG build crashes if running without complete Firebase credentials
+    return {
+      app: {} as FirebaseApp,
+      auth: {} as Auth,
+    }
+  }
+}
+
+const { app, auth } = initFirebaseSafely()
+
+export { app, auth }
 export default app

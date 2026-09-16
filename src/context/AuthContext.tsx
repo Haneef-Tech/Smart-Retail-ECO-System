@@ -47,17 +47,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       document.cookie = `firebase-token=${parsed.token}; path=/; max-age=86400; SameSite=Lax`
     }
 
-    const unsub = onAuthStateChanged(auth, async (u) => {
-      if (u) {
-        setUser(u)
-        const token = await u.getIdToken()
-        document.cookie = `firebase-token=${token}; path=/; max-age=86400; SameSite=Lax`
-      } else if (!localStorage.getItem('admin_session')) {
-        setUser(null)
-        document.cookie = 'firebase-token=; path=/; max-age=0'
+    let unsub = () => {}
+    try {
+      if (auth && 'app' in auth) {
+        unsub = onAuthStateChanged(auth, async (u) => {
+          if (u) {
+            setUser(u)
+            const token = await u.getIdToken()
+            document.cookie = `firebase-token=${token}; path=/; max-age=86400; SameSite=Lax`
+          } else if (!localStorage.getItem('admin_session')) {
+            setUser(null)
+            document.cookie = 'firebase-token=; path=/; max-age=0'
+          }
+          setLoading(false)
+        })
+      } else {
+        setLoading(false)
       }
+    } catch {
       setLoading(false)
-    })
+    }
     return () => unsub()
   }, [])
 
