@@ -36,8 +36,17 @@ export default function PincodeSelector({ value, onChange, error }: Props) {
       setLoading(true)
       try {
         const res = await fetch(`/api/pincodes?q=${encodeURIComponent(query)}`)
-        const data = await res.json()
-        setResults(data.pincodes || [])
+        if (!res.ok) {
+          setResults([])
+          return
+        }
+        const text = await res.text()
+        if (!text.trim()) {
+          setResults([])
+          return
+        }
+        const data = JSON.parse(text) as { pincodes?: PincodeResult[] }
+        setResults(Array.isArray(data.pincodes) ? data.pincodes : [])
       } catch {
         setResults([])
       } finally {

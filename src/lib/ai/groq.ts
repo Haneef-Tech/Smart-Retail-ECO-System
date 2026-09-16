@@ -39,7 +39,14 @@ export async function askGroq(
         continue // try next model
       }
 
-      const data = await res.json()
+      const responseText = await res.text()
+      if (!responseText.trim()) {
+        console.warn(`[Groq API Warning with ${model}] Empty response body`)
+        continue
+      }
+      const data = JSON.parse(responseText) as {
+        choices?: Array<{ message?: { content?: unknown } }>
+      }
       const content = data.choices?.[0]?.message?.content
       if (content && typeof content === 'string') {
         return content.trim()
