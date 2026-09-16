@@ -74,23 +74,43 @@ export async function POST(req: NextRequest) {
     if (!authenticatedUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const uid = authenticatedUser.uid
-    const body = await req.json()
-    const { items, deliveryAddress, notes } = body as {
-      items: CartItem[]
-      deliveryAddress: string
-      notes?: string
+    let body: unknown
+    try {
+      body = await req.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid order request body' }, { status: 400 })
     }
 
-    if (!items || items.length === 0) {
+    const payload = body as { items?: CartItem[]; deliveryAddress?: string; notes?: string }
+    const items = Array.isArray(payload.items) ? payload.items : []
+    const deliveryAddress = typeof payload.deliveryAddress === 'string' ? payload.deliveryAddress.trim() : ''
+    const notes = typeof payload.notes === 'string' ? payload.notes.trim() : undefined
+
+    if (items.length === 0) {
       return NextResponse.json({ error: 'No items in order' }, { status: 400 })
     }
+    if (!deliveryAddress) {
+      return NextResponse.json({ error: 'Delivery address is required' }, { status: 400 })
+    }
 
+    const normalizedItems = new Map<string, number>()
+    for (const item of requestedItems) {
+      if (!item || typeof item.productId !== 'string' || !Number.isInteger(item.quantity) || item.quantity <= 0) {
+        return NextResponse.json({ error: 'Each item must have a valid product and quantity' }, { status: 400 })
+      }
+      normalizedItems.set(item.productId, (normalizedItems.get(item.productId) || 0) + item.quantity)
+    }
+    const requestedItems = Array.from(normalizedItems, ([productId, quantity]) => ({ productId, quantity }))
     const targetUid = uid.trim()
+
+    if (!targetUid) return NextResponse.json({ error: 'Invalid authenticated user' }, { status: 401 })
 
     // Fetch user record if present in User table
     const existingUser = await db.user.findUnique({ where: { id: targetUid } })
     const validUserId = existingUser ? targetUid : null
-    const userEmail = authenticatedUser.email || existingUser?.email || `${targetUid}@smartretail.com`
+    const requestedEmail = authenticatedUser.email || existingUser?.email || `${targetUid}@smartretail.com`
+    const emailOwner = await db.customer.findUnique({ where: { email: requestedEmail } })
+    const userEmail = emailOwner && emailOwner.id !== targetUid ? `${targetUid}@smartretail.com` : requestedEmail
 
     // Ensure Customer DB record exists (prevents foreign key constraint errors)
     await db.customer.upsert({
@@ -121,7 +141,7 @@ export async function POST(req: NextRequest) {
     for (const g of gstRates) gstMap[g.category] = g.rate
 
     // Fetch products & inventories to verify stock
-    const productIds = items.map((i) => i.productId)
+    const productIds = requestedItems.map((i) => i.productId)
     const products = await db.product.findMany({
       where: { id: { in: productIds } },
       include: { inventory: true, category: true },
@@ -129,7 +149,7 @@ export async function POST(req: NextRequest) {
     const productMap = new Map(products.map((p) => [p.id, p]))
 
     // Validate available stock
-    for (const item of items) {
+    for (const item of requestedItems) {
       const p = productMap.get(item.productId)
       if (!p) return NextResponse.json({ error: `Product ${item.productId} not found` }, { status: 400 })
 
@@ -147,7 +167,7 @@ export async function POST(req: NextRequest) {
     let totalDiscount = 0
     let totalTax = 0
 
-    const orderItemsData = items.map((item) => {
+    const orderItemsData = requestedItems.map((item) => {
       const p = productMap.get(item.productId)!
       const gstRate = p.category?.taxRate ?? gstMap[p.category?.name || ''] ?? 0
       const itemSubtotal = p.sellingPrice * item.quantity
@@ -192,11 +212,14 @@ export async function POST(req: NextRequest) {
       })
 
       // Reserve Inventory & Record Inventory Transactions
-      for (const item of items) {
+      for (const item of requestedItems) {
         const inv = await tx.inventory.findUnique({ where: { productId: item.productId } })
         const prevAvail = inv?.availableQuantity ?? 0
         const prevRes = inv?.reservedQuantity ?? 0
-        const newAvail = Math.max(0, prevAvail - item.quantity)
+        if (prevAvail < item.quantity) {
+          throw new Error(`Insufficient stock for product ${item.productId}`)
+        }
+        const newAvail = prevAvail - item.quantity
         const newRes = prevRes + item.quantity
 
         await tx.inventory.upsert({
@@ -264,7 +287,7 @@ export async function POST(req: NextRequest) {
           action: 'CREATE',
           entity: 'ORDER',
           entityId: order.id,
-          details: `Order placed for ₹${total.toFixed(2)} (${items.length} items)`,
+          details: `Order placed for ₹${total.toFixed(2)} (${requestedItems.length} items)`,
         },
       })
 
