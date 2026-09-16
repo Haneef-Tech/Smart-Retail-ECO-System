@@ -4,13 +4,8 @@ const nextConfig: NextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  experimental: {
-    outputFileTracingIncludes: {
-      '/**/*': ['./prisma/dev.db'],
-    },
+  outputFileTracingIncludes: {
+    '/**/*': ['./prisma/dev.db'],
   },
 };
 
