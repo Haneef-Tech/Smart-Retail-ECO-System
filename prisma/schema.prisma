@@ -1,12 +1,11 @@
-// Prisma schema file for Phase 3 Data Engineering & Retail Ecosystem
-
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x", "debian-openssl-3.0.x"]
 }
 
 datasource db {
-  provider = "sqlite" // Can be switched to "postgresql" via DATABASE_URL
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
 model Role {
