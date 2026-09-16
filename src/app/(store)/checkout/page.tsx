@@ -43,15 +43,21 @@ export default function CheckoutPage() {
         fetch('/api/customers/me', { headers: { Authorization: `Bearer ${token}` } })
           .then(readJsonResponse<{ customer?: { name?: string; phone?: string; houseStreet?: string; pincode?: string; area?: string; city?: string; state?: string } }>)
           .then((d) => {
-            if (d.customer) {
+            const customer = d?.customer
+            if (customer) {
               setForm((f) => ({
                 ...f,
-                name: d.customer.name || '',
-                phone: d.customer.phone || '',
-                houseStreet: d.customer.houseStreet || '',
+                name: customer.name || '',
+                phone: customer.phone || '',
+                houseStreet: customer.houseStreet || '',
               }))
-              if (d.customer.pincode) {
-                setPincode({ pincode: d.customer.pincode, area: d.customer.area, city: d.customer.city, state: d.customer.state })
+              if (customer.pincode) {
+                setPincode({
+                  pincode: customer.pincode,
+                  area: customer.area || '',
+                  city: customer.city || '',
+                  state: customer.state || '',
+                })
               }
             }
           })
@@ -81,7 +87,7 @@ export default function CheckoutPage() {
       const res = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ items, deliveryAddress, notes: form.notes, customerId: user.uid }),
+        body: JSON.stringify({ items, deliveryAddress, notes: form.notes }),
       })
       const data = await readJsonResponse<{ error?: string; orderId?: string; billNumber?: string }>(res)
       if (!res.ok) throw new Error(data?.error || 'Order failed')

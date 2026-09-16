@@ -50,10 +50,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           typeof parsed.email === 'string' &&
           typeof parsed.token === 'string'
         ) {
+          const sessionToken = parsed.token
           setUser({
             uid: parsed.uid,
             email: parsed.email,
-            getIdToken: async () => parsed.token,
+            getIdToken: async (): Promise<string> => sessionToken,
           })
           document.cookie = `firebase-token=${parsed.token}; path=/; max-age=86400; SameSite=Lax`
         } else {
