@@ -2,23 +2,53 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { generateBillNumber } from '@/lib/utils'
 import type { CartItem } from '@/types'
+import { adminAuth } from '@/lib/firebase-admin'
 
-async function getUidFromRequest(req: NextRequest): Promise<string | null> {
-  const auth = req.headers.get('authorization')
-  if (!auth?.startsWith('Bearer ')) return null
-  return auth.slice(7)
+interface AuthenticatedUser {
+  uid: string
+  email?: string
+  name?: string
+}
+
+async function getUserFromRequest(req: NextRequest): Promise<AuthenticatedUser | null> {
+  const authorization = req.headers.get('authorization')
+  if (!authorization?.startsWith('Bearer ')) return null
+
+  const token = authorization.slice(7).trim()
+  if (!token) return null
+
+  // The client sends a Firebase ID token, not the Firebase UID. Verify it and
+  // use the decoded UID so orders are linked to the actual customer record.
+  if (process.env.FIREBASE_ADMIN_PROJECT_ID && adminAuth) {
+    try {
+      const decoded = await adminAuth.verifyIdToken(token)
+      return { uid: decoded.uid, email: decoded.email, name: decoded.name }
+    } catch {
+      return null
+    }
+  }
+
+  // Keep the local admin fallback usable when Firebase Admin credentials are
+  // intentionally absent in development.
+  if (token === 'admin-token-haneef123') {
+    return { uid: 'admin-uid-haneef123', email: 'aluruhaneef1@gmail.com', name: 'Admin' }
+  }
+
+  return null
 }
 
 export async function GET(req: NextRequest) {
   try {
-    const uid = await getUidFromRequest(req)
-    const url = new URL(req.url)
-    const isAdminParam = url.searchParams.get('admin') === 'true' || url.searchParams.get('all') === 'true'
+      const authenticatedUser = await getUserFromRequest(req)
+      const uid = authenticatedUser?.uid ?? null
+      const url = new URL(req.url)
+      const isAdminParam = url.searchParams.get('admin') === 'true' || url.searchParams.get('all') === 'true'
 
-    // Check if user is admin
-    let isUserAdmin = isAdminParam || uid === 'admin-uid'
-    if (uid && !isUserAdmin) {
-      const customer = await db.customer.findUnique({ where: { id: uid } })
+      // Check if user is admin
+      let isUserAdmin = isAdminParam || uid === 'admin-uid-haneef123'
+      if (uid && !isUserAdmin) {
+        const customer = await db.customer.findUnique({ where: { id: uid } })
+
       isUserAdmin = customer?.email === 'aluruhaneef1@gmail.com'
     }
 
@@ -40,27 +70,27 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const uid = await getUidFromRequest(req)
-    if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const authenticatedUser = await getUserFromRequest(req)
+    if (!authenticatedUser) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+    const uid = authenticatedUser.uid
     const body = await req.json()
-    const { items, deliveryAddress, notes, customerId } = body as {
+    const { items, deliveryAddress, notes } = body as {
       items: CartItem[]
       deliveryAddress: string
       notes?: string
-      customerId?: string
     }
 
     if (!items || items.length === 0) {
       return NextResponse.json({ error: 'No items in order' }, { status: 400 })
     }
 
-    const targetUid = (customerId || uid).trim()
+    const targetUid = uid.trim()
 
     // Fetch user record if present in User table
     const existingUser = await db.user.findUnique({ where: { id: targetUid } })
     const validUserId = existingUser ? targetUid : null
-    const userEmail = existingUser?.email || `${targetUid}@smartretail.com`
+    const userEmail = authenticatedUser.email || existingUser?.email || `${targetUid}@smartretail.com`
 
     // Ensure Customer DB record exists (prevents foreign key constraint errors)
     await db.customer.upsert({
