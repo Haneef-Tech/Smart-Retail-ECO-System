@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: smart-retail-eco-system
+    env: node
+    plan: free
+    region: oregon
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        value: file:./dev.db
+      - key: ADMIN_EMAIL
+        value: aluruhaneef1@gmail.com
+      - key: GROQ_API_KEY
+        sync: false
+    healthCheckPath: /api/health

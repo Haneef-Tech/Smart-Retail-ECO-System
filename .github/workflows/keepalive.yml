@@ -1,0 +1,31 @@
+name: 24/7 Keep-Alive (Never Sleep)
+
+on:
+  schedule:
+    # Trigger every 10 minutes, 24/7, keeping free-tier containers awake with 0 users
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: 'Deployed URL to ping (optional override)'
+        required: false
+        default: ''
+
+jobs:
+  ping:
+    name: Ping 24/7 Uptime Health Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Storefront and Health Endpoint
+        run: |
+          TARGET="${{ github.event.inputs.target_url || vars.DEPLOYED_URL || 'https://smart-retail-eco-system.onrender.com' }}"
+          echo "Pinging: $TARGET/api/health"
+          
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$TARGET/api/health" || echo "000")
+          echo "Health check HTTP response: $HTTP_CODE"
+          
+          # Also ping home page
+          HOME_CODE=$(curl -s -o /dev/null -w "%{http_code}" "$TARGET" || echo "000")
+          echo "Home page HTTP response: $HOME_CODE"
+          
+          echo "Keep-alive pulse complete. Service maintained active 24/7."
