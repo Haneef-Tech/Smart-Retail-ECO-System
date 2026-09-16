@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
     }
 
     const normalizedItems = new Map<string, number>()
-    for (const item of requestedItems) {
+    for (const item of items) {
       if (!item || typeof item.productId !== 'string' || !Number.isInteger(item.quantity) || item.quantity <= 0) {
         return NextResponse.json({ error: 'Each item must have a valid product and quantity' }, { status: 400 })
       }
