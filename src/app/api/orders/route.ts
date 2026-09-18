@@ -1,29 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { generateBillNumber } from '@/lib/utils'
+import { extractAuthFromRequest } from '@/lib/auth-util'
 import type { CartItem } from '@/types'
-
-async function getUidFromRequest(req: NextRequest): Promise<string | null> {
-  const auth = req.headers.get('authorization')
-  if (!auth?.startsWith('Bearer ')) return null
-  return auth.slice(7)
-}
 
 export async function GET(req: NextRequest) {
   try {
-    const uid = await getUidFromRequest(req)
+    const { uid, email } = extractAuthFromRequest(req)
     const url = new URL(req.url)
     const isAdminParam = url.searchParams.get('admin') === 'true' || url.searchParams.get('all') === 'true'
 
     // Check if user is admin
-    let isUserAdmin = isAdminParam || uid === 'admin-uid'
+    let isUserAdmin =
+      isAdminParam ||
+      uid === 'admin-uid' ||
+      uid === 'admin-uid-haneef123' ||
+      email === 'aluruhaneef1@gmail.com'
+
     if (uid && !isUserAdmin) {
-      const customer = await db.customer.findUnique({ where: { id: uid } })
+      const customer = await db.customer.findFirst({
+        where: {
+          OR: [{ id: uid }, ...(email ? [{ email }] : [])],
+        },
+      })
       isUserAdmin = customer?.email === 'aluruhaneef1@gmail.com'
     }
 
+    // Determine customer filter
+    let customerFilter: string | undefined = undefined
+    if (!isUserAdmin && uid) {
+      const cust = await db.customer.findFirst({
+        where: {
+          OR: [{ id: uid }, ...(email ? [{ email }] : [])],
+        },
+      })
+      customerFilter = cust ? cust.id : uid
+    }
+
     const orders = await db.order.findMany({
-      where: isUserAdmin ? {} : uid ? { customerId: uid } : {},
+      where: isUserAdmin ? {} : customerFilter ? { customerId: customerFilter } : {},
       include: {
         orderItems: true,
         bill: true,
@@ -31,6 +46,7 @@ export async function GET(req: NextRequest) {
       },
       orderBy: { createdAt: 'desc' },
     })
+
     return NextResponse.json({ orders })
   } catch (error) {
     console.error('[API/orders GET]', error)
@@ -40,57 +56,99 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    const uid = await getUidFromRequest(req)
-    if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    const { uid: tokenUid, email: tokenEmail, name: tokenName } = extractAuthFromRequest(req)
 
     const body = await req.json()
-    const { items, deliveryAddress, notes, customerId } = body as {
+    const {
+      items,
+      deliveryAddress,
+      notes,
+      customerId,
+      customerName,
+      customerPhone,
+      customerEmail,
+    } = body as {
       items: CartItem[]
       deliveryAddress: string
       notes?: string
       customerId?: string
+      customerName?: string
+      customerPhone?: string
+      customerEmail?: string
+    }
+
+    const effectiveUid = (customerId || tokenUid || '').trim()
+    if (!effectiveUid) {
+      return NextResponse.json({ error: 'Unauthorized: User sign-in required to place an order' }, { status: 401 })
     }
 
     if (!items || items.length === 0) {
       return NextResponse.json({ error: 'No items in order' }, { status: 400 })
     }
 
-    const targetUid = (customerId || uid).trim()
+    const effectiveEmail = (
+      customerEmail ||
+      tokenEmail ||
+      `${effectiveUid}@smartretail.com`
+    ).toLowerCase().trim()
 
-    // Fetch user record if present in User table
-    const existingUser = await db.user.findUnique({ where: { id: targetUid } })
-    const validUserId = existingUser ? targetUid : null
-    const userEmail = existingUser?.email || `${targetUid}@smartretail.com`
+    const effectiveName = (customerName || tokenName || 'Store Customer').trim()
+    const effectivePhone = (customerPhone || '+91 98765 43210').trim()
 
-    // Ensure Customer DB record exists (prevents foreign key constraint errors)
-    await db.customer.upsert({
-      where: { id: targetUid },
-      update: {
-        houseStreet: deliveryAddress || 'Mydukur',
-        area: 'Mydukur',
-        city: 'Kadapa',
-        state: 'Andhra Pradesh',
-        pincode: '516172',
-      },
-      create: {
-        id: targetUid,
-        name: 'Store Customer',
-        email: userEmail,
-        phone: '+91 98765 43210',
-        houseStreet: deliveryAddress || 'Mydukur',
-        area: 'Mydukur',
-        city: 'Kadapa',
-        state: 'Andhra Pradesh',
-        pincode: '516172',
-      },
-    })
+    // 1. Resolve Customer safely (check by ID first, then by email)
+    let customer = await db.customer.findUnique({ where: { id: effectiveUid } })
+    if (!customer && effectiveEmail) {
+      customer = await db.customer.findUnique({ where: { email: effectiveEmail } })
+    }
 
-    // Fetch GST rates & categories
+    if (customer) {
+      // Update existing customer contact info
+      customer = await db.customer.update({
+        where: { id: customer.id },
+        data: {
+          houseStreet: deliveryAddress || customer.houseStreet || 'Mydukur',
+          area: customer.area || 'Mydukur',
+          city: customer.city || 'Kadapa',
+          state: customer.state || 'Andhra Pradesh',
+          pincode: customer.pincode || '516172',
+          phone: effectivePhone || customer.phone,
+          ...(customerName ? { name: effectiveName } : {}),
+        },
+      })
+    } else {
+      // Verify email doesn't collide with another record
+      const emailConflict = await db.customer.findUnique({ where: { email: effectiveEmail } })
+      const safeEmail = emailConflict
+        ? `${effectiveUid}_${Date.now()}@smartretail.com`
+        : effectiveEmail
+
+      customer = await db.customer.create({
+        data: {
+          id: effectiveUid,
+          name: effectiveName,
+          email: safeEmail,
+          phone: effectivePhone,
+          houseStreet: deliveryAddress || 'Mydukur',
+          area: 'Mydukur',
+          city: 'Kadapa',
+          state: 'Andhra Pradesh',
+          pincode: '516172',
+        },
+      })
+    }
+
+    const actualCustomerId = customer.id
+
+    // Check if user has corresponding internal User record for foreign keys
+    const existingUser = await db.user.findUnique({ where: { id: actualCustomerId } })
+    const validUserId = existingUser ? actualCustomerId : null
+
+    // 2. Fetch GST rates
     const gstRates = await db.gstRate.findMany()
     const gstMap: Record<string, number> = {}
     for (const g of gstRates) gstMap[g.category] = g.rate
 
-    // Fetch products & inventories to verify stock
+    // 3. Fetch products & inventory records
     const productIds = items.map((i) => i.productId)
     const products = await db.product.findMany({
       where: { id: { in: productIds } },
@@ -98,21 +156,25 @@ export async function POST(req: NextRequest) {
     })
     const productMap = new Map(products.map((p) => [p.id, p]))
 
-    // Validate available stock
+    // 4. Validate stock
     for (const item of items) {
       const p = productMap.get(item.productId)
-      if (!p) return NextResponse.json({ error: `Product ${item.productId} not found` }, { status: 400 })
+      if (!p) {
+        return NextResponse.json({ error: `Product "${item.name || item.productId}" not found` }, { status: 400 })
+      }
 
       const avail = p.inventory?.availableQuantity ?? 0
       if (avail < item.quantity) {
         return NextResponse.json(
-          { error: `Insufficient stock for ${p.name}. Available: ${avail}, Requested: ${item.quantity}` },
+          {
+            error: `Insufficient stock for "${p.name}". Available: ${avail}, Requested: ${item.quantity}`,
+          },
           { status: 400 }
         )
       }
     }
 
-    // Calculate totals
+    // 5. Calculate Order Totals
     let subtotal = 0
     let totalDiscount = 0
     let totalTax = 0
@@ -131,7 +193,7 @@ export async function POST(req: NextRequest) {
       return {
         productId: p.id,
         productName: p.name,
-        category: p.category?.name || item.category,
+        category: p.category?.name || item.category || 'Grocery',
         quantity: item.quantity,
         unitPrice: p.sellingPrice,
         mrp: p.mrp,
@@ -144,11 +206,12 @@ export async function POST(req: NextRequest) {
     const total = subtotal + totalTax
     const billNumber = generateBillNumber()
 
-    // Atomic transaction: Create Order + Bill + Reserve Inventory + Sales Record
+    // 6. Execute Atomic Order Transaction
     const result = await db.$transaction(async (tx) => {
+      // Create Order
       const order = await tx.order.create({
         data: {
-          customerId: targetUid,
+          customerId: actualCustomerId,
           status: 'CONFIRMED',
           subtotal,
           totalDiscount,
@@ -161,7 +224,7 @@ export async function POST(req: NextRequest) {
         include: { orderItems: true },
       })
 
-      // Reserve Inventory & Record Inventory Transactions
+      // Reserve stock & record inventory transactions
       for (const item of items) {
         const inv = await tx.inventory.findUnique({ where: { productId: item.productId } })
         const prevAvail = inv?.availableQuantity ?? 0
@@ -210,7 +273,7 @@ export async function POST(req: NextRequest) {
       await tx.sale.create({
         data: {
           orderId: order.id,
-          customerId: targetUid,
+          customerId: actualCustomerId,
           totalAmount: total,
           taxAmount: totalTax,
           paymentMode: 'ONLINE',
@@ -226,30 +289,36 @@ export async function POST(req: NextRequest) {
         },
       })
 
-      // Audit log
-      await tx.auditLog.create({
-        data: {
-          userId: validUserId,
-          userEmail: userEmail,
-          action: 'CREATE',
-          entity: 'ORDER',
-          entityId: order.id,
-          details: `Order placed for ₹${total.toFixed(2)} (${items.length} items)`,
-        },
-      })
+      // Audit log (best effort, do not abort order if audit table fails)
+      try {
+        await tx.auditLog.create({
+          data: {
+            userId: validUserId,
+            userEmail: effectiveEmail,
+            action: 'CREATE',
+            entity: 'ORDER',
+            entityId: order.id,
+            details: `Order placed for ₹${total.toFixed(2)} (${items.length} items)`,
+          },
+        })
+      } catch (auditErr) {
+        console.warn('[API/orders] Non-critical audit log skipped:', auditErr)
+      }
 
       return { order, bill }
     })
 
     return NextResponse.json({
+      success: true,
       orderId: result.order.id,
       billNumber: result.bill.billNumber,
       billId: result.bill.id,
     })
   } catch (error) {
-    console.error('[API/orders POST]', error)
+    console.error('[API/orders POST error]', error)
+    const message = error instanceof Error ? error.message : String(error)
     return NextResponse.json(
-      { error: 'Failed to create order: ' + (error instanceof Error ? error.message : String(error)) },
+      { error: `Failed to create order: ${message}` },
       { status: 500 }
     )
   }

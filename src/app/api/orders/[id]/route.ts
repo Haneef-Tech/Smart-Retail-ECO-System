@@ -1,26 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-
-async function getUidFromRequest(req: NextRequest): Promise<string | null> {
-  const auth = req.headers.get('authorization')
-  if (!auth?.startsWith('Bearer ')) return null
-  return auth.slice(7)
-}
+import { extractAuthFromRequest } from '@/lib/auth-util'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const uid = await getUidFromRequest(req)
+    const { uid, email } = extractAuthFromRequest(req)
     if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
     const { id } = await params
     const order = await db.order.findUnique({
       where: { id },
       include: {
         orderItems: true,
         bill: true,
-        customer: { select: { name: true, email: true, phone: true } },
+        customer: { select: { id: true, name: true, email: true, phone: true } },
       },
     })
+
     if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
+
+    const isUserAdmin =
+      email === 'aluruhaneef1@gmail.com' ||
+      uid === 'admin-uid' ||
+      uid === 'admin-uid-haneef123'
+
+    if (!isUserAdmin) {
+      const isOwner =
+        order.customerId === uid ||
+        (email && order.customer?.email?.toLowerCase() === email.toLowerCase())
+
+      if (!isOwner) {
+        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
+      }
+    }
+
     return NextResponse.json({ order })
   } catch (error) {
     console.error('[API/orders/[id] GET]', error)
@@ -79,14 +92,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         }
       }
 
-      await tx.auditLog.create({
-        data: {
-          action: 'UPDATE_STATUS',
-          entity: 'ORDER',
-          entityId: order.id,
-          details: `Admin updated order #${order.id.slice(0, 8)} status to ${status}`,
-        },
-      })
+      try {
+        await tx.auditLog.create({
+          data: {
+            action: 'UPDATE_STATUS',
+            entity: 'ORDER',
+            entityId: order.id,
+            details: `Order #${order.id.slice(0, 8)} status updated to ${status}`,
+          },
+        })
+      } catch (auditErr) {
+        console.warn('[API/orders/[id] PATCH] Non-critical audit log skipped:', auditErr)
+      }
 
       return updated
     })

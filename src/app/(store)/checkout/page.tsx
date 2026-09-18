@@ -71,7 +71,15 @@ export default function CheckoutPage() {
       const res = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ items, deliveryAddress, notes: form.notes, customerId: user.uid }),
+        body: JSON.stringify({
+          items,
+          deliveryAddress,
+          notes: form.notes,
+          customerId: user.uid,
+          customerName: form.name,
+          customerPhone: form.phone,
+          customerEmail: form.email,
+        }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Order failed')
