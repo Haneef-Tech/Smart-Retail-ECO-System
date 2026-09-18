@@ -58,18 +58,24 @@ export async function POST(req: NextRequest) {
   try {
     const { uid: tokenUid, email: tokenEmail, name: tokenName } = extractAuthFromRequest(req)
 
-    const body = await req.json()
+    let body: unknown
+    try {
+      body = await req.json()
+    } catch {
+      return NextResponse.json({ error: 'Invalid order request body' }, { status: 400 })
+    }
+
     const {
-      items,
-      deliveryAddress,
+      items: rawItems,
+      deliveryAddress: rawDeliveryAddress,
       notes,
       customerId,
       customerName,
       customerPhone,
       customerEmail,
-    } = body as {
-      items: CartItem[]
-      deliveryAddress: string
+    } = (body && typeof body === 'object' ? body : {}) as {
+      items?: CartItem[]
+      deliveryAddress?: string
       notes?: string
       customerId?: string
       customerName?: string
@@ -77,14 +83,39 @@ export async function POST(req: NextRequest) {
       customerEmail?: string
     }
 
+    const items = Array.isArray(rawItems) ? rawItems : []
+    const deliveryAddress = typeof rawDeliveryAddress === 'string' ? rawDeliveryAddress.trim() : ''
+
+    if (items.length === 0) {
+      return NextResponse.json({ error: 'No items in order' }, { status: 400 })
+    }
+    if (!deliveryAddress) {
+      return NextResponse.json({ error: 'Delivery address is required' }, { status: 400 })
+    }
+
     const effectiveUid = (customerId || tokenUid || '').trim()
     if (!effectiveUid) {
       return NextResponse.json({ error: 'Unauthorized: User sign-in required to place an order' }, { status: 401 })
     }
 
-    if (!items || items.length === 0) {
-      return NextResponse.json({ error: 'No items in order' }, { status: 400 })
+    // Normalize items by product ID
+    const normalizedMap = new Map<string, number>()
+    for (const item of items) {
+      if (!item || typeof item.productId !== 'string' || !Number.isInteger(item.quantity) || item.quantity <= 0) {
+        return NextResponse.json({ error: 'Each item must have a valid product and quantity' }, { status: 400 })
+      }
+      normalizedMap.set(item.productId, (normalizedMap.get(item.productId) || 0) + item.quantity)
     }
+
+    const requestedItems = Array.from(normalizedMap, ([productId, quantity]) => {
+      const orig = items.find((i) => i.productId === productId)
+      return {
+        productId,
+        quantity,
+        name: orig?.name,
+        category: orig?.category,
+      }
+    })
 
     const effectiveEmail = (
       customerEmail ||
@@ -149,7 +180,7 @@ export async function POST(req: NextRequest) {
     for (const g of gstRates) gstMap[g.category] = g.rate
 
     // 3. Fetch products & inventory records
-    const productIds = items.map((i) => i.productId)
+    const productIds = requestedItems.map((i) => i.productId)
     const products = await db.product.findMany({
       where: { id: { in: productIds } },
       include: { inventory: true, category: true },
@@ -157,7 +188,7 @@ export async function POST(req: NextRequest) {
     const productMap = new Map(products.map((p) => [p.id, p]))
 
     // 4. Validate stock
-    for (const item of items) {
+    for (const item of requestedItems) {
       const p = productMap.get(item.productId)
       if (!p) {
         return NextResponse.json({ error: `Product "${item.name || item.productId}" not found` }, { status: 400 })
@@ -179,7 +210,7 @@ export async function POST(req: NextRequest) {
     let totalDiscount = 0
     let totalTax = 0
 
-    const orderItemsData = items.map((item) => {
+    const orderItemsData = requestedItems.map((item) => {
       const p = productMap.get(item.productId)!
       const gstRate = p.category?.taxRate ?? gstMap[p.category?.name || ''] ?? 0
       const itemSubtotal = p.sellingPrice * item.quantity
@@ -217,7 +248,7 @@ export async function POST(req: NextRequest) {
           totalDiscount,
           totalTax,
           total,
-          notes,
+          notes: notes?.trim() || undefined,
           deliveryAddress,
           orderItems: { create: orderItemsData },
         },
@@ -225,11 +256,14 @@ export async function POST(req: NextRequest) {
       })
 
       // Reserve stock & record inventory transactions
-      for (const item of items) {
+      for (const item of requestedItems) {
         const inv = await tx.inventory.findUnique({ where: { productId: item.productId } })
         const prevAvail = inv?.availableQuantity ?? 0
         const prevRes = inv?.reservedQuantity ?? 0
-        const newAvail = Math.max(0, prevAvail - item.quantity)
+        if (prevAvail < item.quantity) {
+          throw new Error(`Insufficient stock for product ${item.productId}`)
+        }
+        const newAvail = prevAvail - item.quantity
         const newRes = prevRes + item.quantity
 
         await tx.inventory.upsert({
@@ -298,7 +332,7 @@ export async function POST(req: NextRequest) {
             action: 'CREATE',
             entity: 'ORDER',
             entityId: order.id,
-            details: `Order placed for ₹${total.toFixed(2)} (${items.length} items)`,
+            details: `Order placed for ₹${total.toFixed(2)} (${requestedItems.length} items)`,
           },
         })
       } catch (auditErr) {

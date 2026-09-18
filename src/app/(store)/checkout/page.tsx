@@ -10,6 +10,16 @@ import { formatPrice } from '@/lib/utils'
 import type { PincodeResult } from '@/types'
 import Link from 'next/link'
 
+async function readJsonResponse<T>(response: Response): Promise<T | null> {
+  const text = await response.text()
+  if (!text.trim()) return null
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    return null
+  }
+}
+
 export default function CheckoutPage() {
   const router = useRouter()
   const { user } = useAuth()
@@ -22,26 +32,32 @@ export default function CheckoutPage() {
   const [form, setForm] = useState({ name: '', phone: '', email: '', houseStreet: '', notes: '' })
 
   useEffect(() => {
-    fetch('/api/gst').then((r) => r.json()).then((d) => {
+    fetch('/api/gst').then(readJsonResponse<{ rates?: Array<{ category: string; rate: number }> }>).then((d) => {
       const m: Record<string, number> = {}
-      for (const r of d.rates || []) m[r.category] = r.rate
+      for (const r of d?.rates || []) m[r.category] = r.rate
       setGstRates(m)
     })
     if (user) {
       setForm((f) => ({ ...f, email: user.email || '' }))
       user.getIdToken().then((token) => {
         fetch('/api/customers/me', { headers: { Authorization: `Bearer ${token}` } })
-          .then((r) => r.json())
+          .then(readJsonResponse<{ customer?: { name?: string; phone?: string; houseStreet?: string; pincode?: string; area?: string; city?: string; state?: string } }>)
           .then((d) => {
-            if (d.customer) {
+            const customer = d?.customer
+            if (customer) {
               setForm((f) => ({
                 ...f,
-                name: d.customer.name || '',
-                phone: d.customer.phone || '',
-                houseStreet: d.customer.houseStreet || '',
+                name: customer.name || '',
+                phone: customer.phone || '',
+                houseStreet: customer.houseStreet || '',
               }))
-              if (d.customer.pincode) {
-                setPincode({ pincode: d.customer.pincode, area: d.customer.area, city: d.customer.city, state: d.customer.state })
+              if (customer.pincode) {
+                setPincode({
+                  pincode: customer.pincode,
+                  area: customer.area || '',
+                  city: customer.city || '',
+                  state: customer.state || '',
+                })
               }
             }
           })
@@ -81,8 +97,9 @@ export default function CheckoutPage() {
           customerEmail: form.email,
         }),
       })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Order failed')
+      const data = await readJsonResponse<{ error?: string; orderId?: string; billNumber?: string }>(res)
+      if (!res.ok) throw new Error(data?.error || 'Order failed')
+      if (!data?.orderId || !data.billNumber) throw new Error('Order response was incomplete. Please try again.')
       clearCart()
       router.push(`/order-success?orderId=${data.orderId}&bill=${data.billNumber}`)
     } catch (err: unknown) {
