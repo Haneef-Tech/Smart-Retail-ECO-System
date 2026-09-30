@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { guardRoles } from '@/lib/auth-guard'
+import { checkRateLimit } from '@/lib/rate-limit'
+import { readJsonBody, validate } from '@/lib/api-response'
+import { inventoryEntrySchema, stockAdjustSchema } from '@/lib/validators/products'
 
 export async function GET() {
+  const { denied } = await guardRoles(['ADMIN', 'STAFF'])
+  if (denied) return denied
+  const limited = await checkRateLimit(null, 'standard')
+  if (limited) return limited
   try {
     const products = await db.product.findMany({
       where: { isActive: true },
@@ -51,8 +59,15 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const { denied } = await guardRoles(['ADMIN', 'STAFF'])
+  if (denied) return denied
+  const limited = await checkRateLimit(req, 'standard')
+  if (limited) return limited
   try {
-    const body = await req.json()
+    const raw = await readJsonBody(req)
+    if (!raw.ok) return raw.response
+    const parsed = validate(inventoryEntrySchema, raw.body)
+    if (!parsed.ok) return parsed.response
     const {
       name,
       sku,
@@ -65,17 +80,13 @@ export async function POST(req: NextRequest) {
       reorderLevel,
       safetyStock,
       description,
-    } = body
-
-    if (!name || !categoryId || mrp === undefined || sellingPrice === undefined) {
-      return NextResponse.json({ error: 'Name, category, MRP, and selling price are required' }, { status: 400 })
-    }
+    } = parsed.data
 
     const finalSku = sku?.trim() || `SKU-${Date.now().toString().slice(-6)}`
     const id = `P${Date.now().toString().slice(-4)}`
-    const stockUnits = parseInt(initialStock) || 0
-    const rLevel = parseInt(reorderLevel) || 10
-    const sStock = parseInt(safetyStock) || 5
+    const stockUnits = initialStock ?? 0
+    const rLevel = reorderLevel ?? 10
+    const sStock = safetyStock ?? 5
 
     const newProduct = await db.$transaction(async (tx) => {
       const product = await tx.product.create({
@@ -86,8 +97,8 @@ export async function POST(req: NextRequest) {
           description: description?.trim() || '',
           categoryId,
           supplierId: supplierId || null,
-          mrp: parseFloat(mrp),
-          sellingPrice: parseFloat(sellingPrice),
+          mrp,
+          sellingPrice,
           unit: unit || '1 pc',
           imageUrl: '/products/P001.svg', // default placeholder
           reorderLevel: rLevel,
@@ -131,13 +142,16 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const { denied } = await guardRoles(['ADMIN', 'STAFF'])
+  if (denied) return denied
+  const limited = await checkRateLimit(req, 'standard')
+  if (limited) return limited
   try {
-    const body = await req.json()
-    const { productId, changeQty, setQty, reason } = body
-
-    if (!productId) {
-      return NextResponse.json({ error: 'productId is required' }, { status: 400 })
-    }
+    const raw = await readJsonBody(req)
+    if (!raw.ok) return raw.response
+    const parsed = validate(stockAdjustSchema, raw.body)
+    if (!parsed.ok) return parsed.response
+    const { productId, changeQty, setQty, reason } = parsed.data
 
     const product = await db.product.findUnique({
       where: { id: productId },
@@ -152,9 +166,9 @@ export async function PATCH(req: NextRequest) {
     let newQty = currentQty
 
     if (setQty !== undefined) {
-      newQty = Math.max(0, parseInt(setQty))
+      newQty = Math.max(0, setQty)
     } else if (changeQty !== undefined) {
-      newQty = Math.max(0, currentQty + parseInt(changeQty))
+      newQty = Math.max(0, currentQty + changeQty)
     } else {
       return NextResponse.json({ error: 'Must provide either changeQty or setQty' }, { status: 400 })
     }

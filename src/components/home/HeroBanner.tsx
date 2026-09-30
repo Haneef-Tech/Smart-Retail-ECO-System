@@ -1,57 +1,57 @@
 import Link from 'next/link'
+import Image from 'next/image'
 
 export default function HeroBanner() {
   return (
-    <div className="bg-gradient-to-br from-green-700 to-green-500 text-white">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-12 sm:py-16">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
-          <div className="space-y-5">
-            <div className="inline-flex items-center gap-2 bg-white/20 backdrop-blur-sm rounded-full px-4 py-1.5 text-sm font-medium">
-              🚀 Fast Delivery Available
-            </div>
-            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold leading-tight">
-              Fresh Groceries &<br />
-              <span className="text-green-200">Daily Essentials</span>
-            </h1>
-            <p className="text-green-100 text-base sm:text-lg max-w-md">
-              Shop from 1000+ products. Fresh dairy, crispy snacks, personal care, and more — all at your doorstep.
-            </p>
-            <div className="flex flex-wrap gap-3">
-              <Link
-                href="/products"
-                className="bg-white text-green-700 font-bold px-6 py-3 rounded-xl hover:bg-green-50 transition-colors shadow-sm"
-              >
-                Shop Now
-              </Link>
-              <Link
-                href="/categories/Grocery"
-                className="border border-white/50 text-white font-semibold px-6 py-3 rounded-xl hover:bg-white/10 transition-colors"
-              >
-                Browse Categories
-              </Link>
-            </div>
+    <section className="sr-hero-gradient rounded-2xl border border-green-100 shadow-[0_4px_20px_rgba(0,0,0,0.05)] overflow-hidden sr-page-enter">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center p-6 sm:p-10">
+        {/* Left copy */}
+        <div className="space-y-4">
+          <h1 className="text-3xl sm:text-4xl lg:text-[2.75rem] font-bold leading-tight text-[#0F5132] tracking-tight">
+            Fresh Products,
+            <br />
+            Smart Choices
+          </h1>
+          <p className="text-[#6B7280] text-sm sm:text-base max-w-md leading-relaxed">
+            Quality Essentials for a Better Tomorrow at Your Fingertips
+          </p>
+          <div className="pt-1">
+            <Link
+              href="/products"
+              className="sr-btn-primary inline-flex items-center gap-2 font-semibold px-7 py-3 text-sm sm:text-base"
+            >
+              Shop Now
+            </Link>
           </div>
-          <div className="hidden md:flex justify-center">
-            <div className="grid grid-cols-2 gap-4 max-w-sm">
-              {[
-                { emoji: '🥛', label: 'Dairy', bg: 'bg-white/10' },
-                { emoji: '🛒', label: 'Grocery', bg: 'bg-white/10' },
-                { emoji: '🧴', label: 'Personal Care', bg: 'bg-white/10' },
-                { emoji: '🍪', label: 'Snacks', bg: 'bg-white/10' },
-              ].map(({ emoji, label, bg }) => (
-                <Link
-                  key={label}
-                  href={`/categories/${label}`}
-                  className={`${bg} backdrop-blur-sm rounded-2xl p-6 flex flex-col items-center gap-2 hover:bg-white/20 transition-colors`}
-                >
-                  <span className="text-4xl">{emoji}</span>
-                  <span className="text-sm font-medium">{label}</span>
-                </Link>
-              ))}
+        </div>
+
+        {/* Right visual — fresh groceries collage built from real product photos.
+            To use a single banner photo instead, replace the block below with:
+            <Image src="/hero-groceries.png" alt="Fresh groceries" width={560} height={380} className="rounded-2xl object-cover w-full h-auto" priority /> */}
+        <div className="relative hidden md:block">
+          <div className="grid grid-cols-3 gap-3 max-w-md ml-auto">
+            <div className="bg-white/80 backdrop-blur rounded-2xl p-3 shadow-[0_4px_20px_rgba(0,0,0,0.06)] border border-white rotate-[-3deg] transition-transform duration-300 hover:rotate-0">
+              <Image src="/products/P001.webp" alt="Fresh product" width={160} height={160} className="rounded-xl object-contain w-full h-28 bg-[#F4FAF6]" unoptimized />
+              <p className="text-[11px] font-semibold text-[#0F5132] mt-2 text-center">Farm Fresh</p>
+            </div>
+            <div className="bg-white/80 backdrop-blur rounded-2xl p-3 shadow-[0_4px_20px_rgba(0,0,0,0.06)] border border-white mt-6 transition-transform duration-300 hover:-translate-y-1">
+              <Image src="/products/P005.webp" alt="Fresh product" width={160} height={160} className="rounded-xl object-contain w-full h-28 bg-[#F4FAF6]" unoptimized />
+              <p className="text-[11px] font-semibold text-[#0F5132] mt-2 text-center">Daily Dairy</p>
+            </div>
+            <div className="bg-white/80 backdrop-blur rounded-2xl p-3 shadow-[0_4px_20px_rgba(0,0,0,0.06)] border border-white rotate-[3deg] transition-transform duration-300 hover:rotate-0">
+              <Image src="/products/P010.webp" alt="Fresh product" width={160} height={160} className="rounded-xl object-contain w-full h-28 bg-[#F4FAF6]" unoptimized />
+              <p className="text-[11px] font-semibold text-[#0F5132] mt-2 text-center">Smart Snacks</p>
             </div>
           </div>
         </div>
       </div>
-    </div>
+
+      {/* Carousel dots */}
+      <div className="flex items-center justify-center gap-1.5 pb-4" aria-hidden="true">
+        <span className="w-6 h-1.5 rounded-full bg-[#16A34A]" />
+        <span className="w-1.5 h-1.5 rounded-full bg-[#16A34A]/30" />
+        <span className="w-1.5 h-1.5 rounded-full bg-[#16A34A]/30" />
+      </div>
+    </section>
   )
 }

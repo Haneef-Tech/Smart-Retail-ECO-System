@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { guardRoles } from '@/lib/auth-guard'
+import { checkRateLimit } from '@/lib/rate-limit'
 
 export async function GET() {
+  const { denied } = await guardRoles(['ADMIN', 'STAFF'])
+  if (denied) return denied
+  const limited = await checkRateLimit(null, 'standard')
+  if (limited) return limited
   try {
     const products = await db.product.findMany({
       where: { isActive: true },

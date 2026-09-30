@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server'
+import { guardRoles } from '@/lib/auth-guard'
+import { checkRateLimit } from '@/lib/rate-limit'
 import { generateDemandForecasts } from '@/lib/forecasting/engine'
 import { calculateReorderRecommendations } from '@/lib/forecasting/reorder'
 import { diagnoseDeadStock } from '@/lib/forecasting/deadstock'
@@ -6,6 +8,10 @@ import { detectSalesOpportunities } from '@/lib/forecasting/opportunity'
 import { compareSuppliersForProduct } from '@/lib/forecasting/suppliers'
 
 export async function GET() {
+  const { denied } = await guardRoles(['ADMIN', 'STAFF'])
+  if (denied) return denied
+  const limited = await checkRateLimit(null, 'standard')
+  if (limited) return limited
   try {
     const forecasts = await generateDemandForecasts()
     const reorders = await calculateReorderRecommendations(forecasts)

@@ -1,10 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { validateQuery } from '@/lib/api-response'
+import { z } from 'zod'
+import { checkRateLimit } from '@/lib/rate-limit'
+import { guardRoles } from '@/lib/auth-guard'
 
 export async function GET(req: NextRequest) {
+  const { denied } = await guardRoles(['ADMIN', 'STAFF'])
+  if (denied) return denied
+  const limited = await checkRateLimit(req, 'standard')
+  if (limited) return limited
   try {
-    const { searchParams } = new URL(req.url)
-    const days = parseInt(searchParams.get('days') || '30')
+    const parsed = validateQuery(z.object({ days: z.coerce.number().int().min(1).max(365).default(30) }), req)
+    if (!parsed.ok) return parsed.response
+    const days = parsed.data.days
 
     const dateLimit = new Date()
     dateLimit.setDate(dateLimit.getDate() - days)

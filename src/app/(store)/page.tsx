@@ -1,9 +1,10 @@
 import { db } from '@/lib/db'
 import { getStockStatus, getDiscountPercent } from '@/lib/utils'
 import HeroBanner from '@/components/home/HeroBanner'
-import CategoryGrid from '@/components/home/CategoryGrid'
+import CategorySidebar from '@/components/home/CategorySidebar'
 import ProductGrid from '@/components/product/ProductGrid'
 import BenefitsBar from '@/components/home/BenefitsBar'
+import { SectionHeader } from '@/components/ui/fresh'
 import type { Product } from '@/types'
 
 async function getProducts(): Promise<Product[]> {
@@ -29,25 +30,27 @@ export default async function HomePage() {
   const products = await getProducts()
 
   return (
-    <div>
-      <HeroBanner />
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8 space-y-10">
-        <CategoryGrid />
+    <div className="sr-page-enter">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-5 sm:py-7 space-y-6 sm:space-y-8">
+        <HeroBanner />
 
-        {/* Main Store Products Section */}
-        <section id="products">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900">All Supermarket Products</h2>
-              <p className="text-sm text-gray-500">Fresh grocery, daily essentials, snacks, personal care &amp; stationery</p>
-            </div>
-            <span className="text-xs bg-green-100 text-green-800 font-bold px-3 py-1 rounded-full">
-              {products.length} Products Available
-            </span>
+        <div className="grid grid-cols-1 lg:grid-cols-[248px_minmax(0,1fr)] gap-5 sm:gap-6 items-start">
+          {/* Left sidebar */}
+          <div className="lg:sticky lg:top-20">
+            <CategorySidebar />
           </div>
 
-          <ProductGrid products={products} />
-        </section>
+          {/* Popular Products */}
+          <section id="products" className="min-w-0">
+            <SectionHeader
+              title="Popular Products"
+              subtitle={`${products.length} fresh picks available today`}
+              linkLabel="View All"
+              linkHref="/products"
+            />
+            <ProductGrid products={products} />
+          </section>
+        </div>
 
         <BenefitsBar />
       </div>

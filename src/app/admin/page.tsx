@@ -1,24 +1,23 @@
 import { db } from '@/lib/db'
 import Link from 'next/link'
 import {
+  IndianRupee,
+  ShoppingCart,
   Package,
-  ShoppingBag,
-  TrendingUp,
+  Warehouse,
   AlertTriangle,
-  Building2,
-  Truck,
+  PackageX,
+  TrendingUp,
+  ArrowRight,
   Zap,
   Bot,
-  ArrowRight,
-  CheckCircle2,
-  Warehouse,
-  Clock,
-  FileText,
-  Sparkles,
-  Database,
-  Layers,
+  Boxes,
+  CircleAlert,
 } from 'lucide-react'
-import { formatPrice, formatDateTime } from '@/lib/utils'
+import { formatPrice } from '@/lib/utils'
+import { KpiCard, Card, IconTile } from '@/components/ui/fresh'
+import SalesOverview from '@/components/admin/SalesOverview'
+import { requirePageRole } from '@/lib/auth-guard'
 
 export const dynamic = 'force-dynamic'
 
@@ -56,6 +55,8 @@ async function getLiveMetrics() {
   // Current Date Boundaries (Local / IST)
   const now = new Date()
   const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const startOfYesterday = new Date(startOfToday)
+  startOfYesterday.setDate(startOfYesterday.getDate() - 1)
 
   // Today's Real Orders & Real Revenue
   const todayOrders = allOrders.filter(
@@ -66,6 +67,21 @@ async function getLiveMetrics() {
     (sum, o) => sum + o.orderItems.reduce((isum, item) => isum + item.quantity, 0),
     0
   )
+
+  // Yesterday's baseline for honest day-over-day trends (display only)
+  const yesterdayOrders = allOrders.filter(
+    (o) => new Date(o.createdAt) >= startOfYesterday && new Date(o.createdAt) < startOfToday && o.status !== 'CANCELLED'
+  )
+  const yesterdayRevenue = yesterdayOrders.reduce((sum, o) => sum + o.total, 0)
+  const yesterdayUnits = yesterdayOrders.reduce(
+    (sum, o) => sum + o.orderItems.reduce((isum, item) => isum + item.quantity, 0),
+    0
+  )
+  const pctChange = (today: number, yesterday: number) => {
+    if (yesterday === 0) return today > 0 ? 100 : 0
+    return ((today - yesterday) / yesterday) * 100
+  }
+  const fmtTrend = (pct: number) => `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`
 
   // All-Time Real Store Revenue
   const confirmedOrders = allOrders.filter((o) => o.status !== 'CANCELLED')
@@ -119,6 +135,54 @@ async function getLiveMetrics() {
     .sort((a, b) => b[1].units - a[1].units)
     .slice(0, 5)
 
+  /* ----- Display-only derivations from the same fetched data ----- */
+
+  // Monthly revenue buckets (last 6 months) for the Sales Overview chart
+  const monthlySales = Array.from({ length: 6 }, (_, idx) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (5 - idx), 1)
+    return {
+      key: `${d.getFullYear()}-${d.getMonth()}`,
+      month: d.toLocaleString('en-IN', { month: 'short' }),
+      revenue: 0,
+      orders: 0,
+    }
+  })
+  const monthIndex = new Map(monthlySales.map((m, i) => [m.key, i]))
+  for (const o of confirmedOrders) {
+    const d = new Date(o.createdAt)
+    const idx = monthIndex.get(`${d.getFullYear()}-${d.getMonth()}`)
+    if (idx !== undefined) {
+      monthlySales[idx].revenue += o.total
+      monthlySales[idx].orders += 1
+    }
+  }
+
+  // Inventory health counts
+  const soldTodayNames = new Set(Object.keys(todayProductsSoldMap))
+  let outOfStockCount = 0
+  let overstockCount = 0
+  let deadStockCount = 0
+  const categoryUnits = new Map<string, number>()
+  for (const p of products) {
+    const stock = p.inventory?.availableQuantity ?? 0
+    if (stock === 0) outOfStockCount += 1
+    if (stock > Math.max(p.reorderLevel * 3, 30)) overstockCount += 1
+    if (stock > 0 && stock >= p.reorderLevel && !soldTodayNames.has(p.name)) deadStockCount += 1
+    categoryUnits.set(p.category.name, (categoryUnits.get(p.category.name) ?? 0) + stock)
+  }
+
+  // Category performance (share of stocked units, top 5)
+  const categoryPerf = [...categoryUnits.entries()]
+    .map(([name, units]) => ({ name, units, pct: totalUnits > 0 ? (units / totalUnits) * 100 : 0 }))
+    .sort((a, b) => b.units - a.units)
+    .slice(0, 5)
+
+  // Demand forecast projection from today's sales velocity (display only)
+  const forecast = topItemsToday.slice(0, 4).map(([name, stat]) => ({
+    name,
+    projectedUnits: stat.units * 30,
+  }))
+
   return {
     totalProducts: products.length,
     totalUnits,
@@ -130,6 +194,12 @@ async function getLiveMetrics() {
     todayOrdersCount: todayOrders.length,
     todayUnitsSold,
     topItemsToday,
+    revenueTrend: fmtTrend(pctChange(todayRevenue, yesterdayRevenue)),
+    revenueTrendUp: todayRevenue >= yesterdayRevenue,
+    ordersTrend: fmtTrend(pctChange(todayOrders.length, yesterdayOrders.length)),
+    ordersTrendUp: todayOrders.length >= yesterdayOrders.length,
+    unitsTrend: fmtTrend(pctChange(todayUnitsSold, yesterdayUnits)),
+    unitsTrendUp: todayUnitsSold >= yesterdayUnits,
     // All-time Real Metrics
     allTimeRevenue,
     totalOrdersCount: allOrders.length,
@@ -137,423 +207,276 @@ async function getLiveMetrics() {
     recentOrders: allOrders.slice(0, 8),
     recentPurchases: purchases,
     historicalCsvRecordsCount: storeSalesRecords,
+    // Display derivations
+    monthlySales: monthlySales.map(({ month, revenue, orders }) => ({ month, revenue, orders })),
+    outOfStockCount,
+    overstockCount,
+    deadStockCount,
+    categoryPerf,
+    forecast,
   }
 }
 
+const TILE_COLORS = ['bg-green-100 text-[#16A34A]', 'bg-blue-100 text-[#3B82F6]', 'bg-purple-100 text-[#8B5CF6]', 'bg-orange-100 text-[#F59E0B]', 'bg-pink-100 text-[#EC4899]']
+const BAR_COLORS = ['#16A34A', '#3B82F6', '#8B5CF6', '#F59E0B', '#EC4899']
+
 export default async function AdminDashboardPage() {
+  await requirePageRole(['ADMIN', 'STAFF'])
   const data = await getLiveMetrics()
 
   return (
-    <div className="space-y-8">
-      {/* Top Banner: Store Status & Live Pulse */}
-      <div className="bg-white rounded-3xl border border-gray-100 p-6 sm:p-7 shadow-xs">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              Live Database Connected • Real-Time Store Operations
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight">
-              Operational Command Center
-            </h1>
-            <p className="text-xs sm:text-sm text-gray-500">
-              Mydukur Supermarket, Kadapa, AP (516172) • Real revenue, live customer orders &amp; autonomous restocking
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2.5">
-            <Link
-              href="/admin/forecasting"
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-2 shadow-xs transition-colors"
-            >
-              <Zap size={15} /> Autonomous Ordering
-            </Link>
-            <Link
-              href="/admin/ai"
-              className="bg-gray-900 hover:bg-black text-white font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-2 shadow-xs transition-colors"
-            >
-              <Bot size={15} /> AI Assistant
-            </Link>
-            <Link
-              href="/admin/orders"
-              className="bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 font-bold px-4 py-2.5 rounded-xl text-xs flex items-center gap-2 shadow-2xs transition-colors"
-            >
-              <CheckCircle2 size={15} className="text-blue-600" />
-              Orders ({data.totalOrdersCount})
-            </Link>
-          </div>
-        </div>
-      </div>
-
-      {/* Primary KPI Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
-        {/* Today's Real Revenue */}
-        <div className="bg-gradient-to-br from-emerald-500 to-green-600 text-white rounded-3xl p-6 shadow-sm relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none" />
-          <div className="flex items-center justify-between text-emerald-100 mb-2">
-            <span className="text-[11px] font-black uppercase tracking-wider bg-white/20 px-2.5 py-0.5 rounded-full">
-              Today&apos;s Live Sales
-            </span>
-            <TrendingUp size={20} className="text-white" />
-          </div>
-          <p className="text-3xl sm:text-4xl font-black tracking-tight mt-3">
-            {formatPrice(data.todayRevenue)}
+    <div className="space-y-5 sm:space-y-6">
+      {/* Page header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold text-[#0F5132] tracking-tight">Dashboard</h1>
+          <p className="text-xs sm:text-sm text-[#6B7280] mt-0.5">
+            Mydukur Supermarket, Kadapa, AP (516172) • {formatPrice(data.todayRevenue)} live revenue today
           </p>
-          <div className="flex items-center justify-between text-xs text-emerald-100 font-medium mt-3 pt-3 border-t border-white/15">
-            <span>{data.todayOrdersCount} orders placed today</span>
-            <span>{data.todayUnitsSold} units sold</span>
-          </div>
         </div>
-
-        {/* All-Time Confirmed Revenue */}
-        <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-xs">
-          <div className="flex items-center justify-between text-gray-400 mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
-              All-Time Live Revenue
-            </span>
-            <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-              <ShoppingBag size={18} />
-            </div>
-          </div>
-          <p className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight mt-2">
-            {formatPrice(data.allTimeRevenue)}
-          </p>
-          <div className="flex items-center justify-between text-xs text-gray-400 font-medium mt-3 pt-3 border-t border-gray-100">
-            <span>{data.totalOrdersCount} total customer orders</span>
-            <span className="text-blue-600 font-bold">{data.pendingOrdersCount} pending</span>
-          </div>
-        </div>
-
-        {/* Physical Stock in Warehouse */}
-        <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-xs">
-          <div className="flex items-center justify-between text-gray-400 mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
-              Warehouse Stock Units
-            </span>
-            <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold">
-              <Warehouse size={18} />
-            </div>
-          </div>
-          <p className="text-2xl sm:text-3xl font-black text-gray-900 tracking-tight mt-2">
-            {data.totalUnits.toLocaleString('en-IN')}{' '}
-            <span className="text-sm font-bold text-gray-400">units</span>
-          </p>
-          <div className="flex items-center justify-between text-xs text-gray-400 font-medium mt-3 pt-3 border-t border-gray-100">
-            <span>{data.totalProducts} active SKUs</span>
-            <span>Valuation: {formatPrice(data.totalValuation)}</span>
-          </div>
-        </div>
-
-        {/* Reorder Alerts */}
-        <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-xs">
-          <div className="flex items-center justify-between text-gray-400 mb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500">
-              Autonomous Reorder Alerts
-            </span>
-            <div className="w-9 h-9 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center font-bold">
-              <AlertTriangle size={18} />
-            </div>
-          </div>
-          <p className="text-2xl sm:text-3xl font-black text-amber-600 tracking-tight mt-2">
-            {data.lowStockItems.length}{' '}
-            <span className="text-sm font-bold text-amber-700/70">items</span>
-          </p>
-          <div className="flex items-center justify-between text-xs text-amber-700/80 font-medium mt-3 pt-3 border-t border-gray-100">
-            <span>At or below safe threshold</span>
-            <Link href="/admin/forecasting" className="font-black underline text-amber-900">
-              1-Click PO →
-            </Link>
-          </div>
-        </div>
-      </div>
-
-      {/* Dual Column: Real-Time Live Orders & Today's Top Products */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Real-time Order Stream (2 Columns) */}
-        <div className="lg:col-span-2 bg-white rounded-3xl border border-gray-100 p-6 shadow-xs">
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
-                <Clock size={16} />
-              </div>
-              <div>
-                <h2 className="font-bold text-gray-900 text-base">Real-Time Live Orders Feed</h2>
-                <p className="text-xs text-gray-400">Actual customer checkouts recorded in live database</p>
-              </div>
-            </div>
-            <Link href="/admin/orders" className="text-xs font-bold text-emerald-600 hover:text-emerald-700">
-              View All ({data.totalOrdersCount}) →
-            </Link>
-          </div>
-
-          {data.recentOrders.length === 0 ? (
-            <div className="p-12 text-center text-gray-400 bg-gray-50 rounded-2xl">
-              <ShoppingBag size={32} className="mx-auto text-gray-300 mb-2" />
-              <p className="text-sm font-bold text-gray-700">No live customer orders yet</p>
-              <p className="text-xs text-gray-400 mt-1">
-                When you place a sample order at checkout, it will appear here in real time.
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs text-left">
-                <thead className="bg-gray-50 text-gray-500 font-bold border-b border-gray-100">
-                  <tr>
-                    <th className="p-3 rounded-l-xl">Order ID</th>
-                    <th className="p-3">Customer</th>
-                    <th className="p-3">Items Ordered</th>
-                    <th className="p-3 text-right">Total</th>
-                    <th className="p-3 text-center">Status</th>
-                    <th className="p-3 rounded-r-xl text-right">Date &amp; Time</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {data.recentOrders.map((o) => (
-                    <tr key={o.id} className="hover:bg-gray-50/60 transition-colors">
-                      <td className="p-3 font-mono font-bold text-gray-900">
-                        #{o.id.slice(0, 8).toUpperCase()}
-                      </td>
-                      <td className="p-3">
-                        <p className="font-bold text-gray-900">{o.customer?.name || 'Customer'}</p>
-                        <p className="text-[10px] text-gray-400">{o.customer?.phone || o.customer?.email}</p>
-                      </td>
-                      <td className="p-3 text-gray-600 max-w-xs truncate">
-                        {o.orderItems.map((i) => `${i.quantity}x ${i.productName}`).join(', ')}
-                      </td>
-                      <td className="p-3 text-right font-black text-emerald-700">
-                        {formatPrice(o.total)}
-                      </td>
-                      <td className="p-3 text-center">
-                        <span
-                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-black ${
-                            o.status === 'CONFIRMED'
-                              ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                              : o.status === 'DELIVERED'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : o.status === 'CANCELLED'
-                              ? 'bg-red-50 text-red-700 border border-red-200'
-                              : 'bg-amber-50 text-amber-700 border border-amber-200'
-                          }`}
-                        >
-                          {o.status}
-                        </span>
-                      </td>
-                      <td className="p-3 text-right text-gray-400 font-medium">
-                        {formatDateTime(o.createdAt)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Today's Sales Highlights & System Architecture (1 Column) */}
-        <div className="space-y-6">
-          {/* Items sold today card */}
-          <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-xs">
-            <div className="flex items-center gap-2 mb-3">
-              <Sparkles size={16} className="text-emerald-600" />
-              <h3 className="font-bold text-gray-900 text-sm">Today&apos;s Sold Products</h3>
-            </div>
-            {data.topItemsToday.length === 0 ? (
-              <p className="text-xs text-gray-400 py-4 text-center bg-gray-50 rounded-2xl">
-                No products sold yet today. Items ordered from the store will rank here.
-              </p>
-            ) : (
-              <div className="space-y-2.5">
-                {data.topItemsToday.map(([name, stat], idx) => (
-                  <div
-                    key={name}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-2xl text-xs"
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <span className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-800 font-black text-[10px] flex items-center justify-center shrink-0">
-                        {idx + 1}
-                      </span>
-                      <span className="font-bold text-gray-900 truncate">{name}</span>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <span className="font-black text-gray-900">{stat.units} sold</span>
-                      <span className="text-[10px] text-gray-400 block">{formatPrice(stat.revenue)}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Ground Truth vs Pattern RAG Info Box */}
-          <div className="bg-gradient-to-br from-blue-50 to-indigo-50/50 border border-blue-100 rounded-3xl p-5 text-xs text-blue-950 space-y-3">
-            <div className="flex items-center gap-2 text-blue-700 font-bold">
-              <Database size={16} />
-              <span>Two-Tier Data Architecture</span>
-            </div>
-            <div className="space-y-2 text-[11px] text-blue-900/80 leading-relaxed">
-              <div className="bg-white/80 p-2.5 rounded-xl border border-blue-100/60">
-                <strong className="text-blue-950 block">🟢 Live Operational Database:</strong>
-                Tracks current reality — real customer orders, today&apos;s revenue ({formatPrice(data.todayRevenue)}), and physical units in warehouse.
-              </div>
-              <div className="bg-white/80 p-2.5 rounded-xl border border-blue-100/60">
-                <strong className="text-indigo-950 block">📚 Historical CSV &amp; RAG Engine:</strong>
-                Stores {data.historicalCsvRecordsCount} training records exclusively to learn seasonal patterns, discover demand correlations, and forecast future reorders.
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Autonomous Reorder Triggers Table */}
-      <div className="bg-white rounded-3xl border border-gray-100 shadow-xs overflow-hidden">
-        <div className="p-5 sm:p-6 border-b border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gray-50/40">
-          <div>
-            <div className="flex items-center gap-2">
-              <Zap size={18} className="text-amber-500 shrink-0" />
-              <h2 className="font-bold text-gray-900 text-base">
-                Autonomous Restocking &amp; Safety Thresholds
-              </h2>
-            </div>
-            <p className="text-xs text-gray-500 mt-1">
-              AI continuously analyzes warehouse stock vs supplier lead times to trigger replenishment
-            </p>
-          </div>
+        <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/admin/forecasting"
-            className="text-xs font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 px-4 py-2 rounded-xl border border-emerald-200 flex items-center gap-1.5 self-start sm:self-auto shrink-0 transition-colors"
+            className="sr-btn-primary font-semibold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5"
           >
-            Open Autonomous Ordering System <ArrowRight size={13} />
+            <Zap size={14} /> Autonomous Ordering
+          </Link>
+          <Link
+            href="/admin/ai"
+            className="font-semibold px-4 py-2 rounded-xl text-xs flex items-center gap-1.5 bg-[#111827] hover:bg-black text-white transition-all duration-200 active:scale-[0.97]"
+          >
+            <Bot size={14} /> AI Assistant
           </Link>
         </div>
-
-        {data.lowStockItems.length === 0 ? (
-          <div className="p-10 text-center text-gray-500 text-xs">
-            🎉 All product inventory levels are healthy! No items currently below safe reorder thresholds.
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left min-w-[700px]">
-              <thead className="bg-gray-50 text-gray-600 font-bold border-b border-gray-100">
-                <tr>
-                  <th className="p-4">Product</th>
-                  <th className="p-4">Category</th>
-                  <th className="p-4 text-center">Current Warehouse Stock</th>
-                  <th className="p-4 text-center">Reorder Threshold</th>
-                  <th className="p-4">Supplier</th>
-                  <th className="p-4 text-right">AI Recommended Order</th>
-                  <th className="p-4 text-center">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {data.lowStockItems.map((item) => (
-                  <tr key={item.id} className="hover:bg-amber-50/30 transition-colors">
-                    <td className="p-4 font-bold text-gray-900">{item.name}</td>
-                    <td className="p-4 text-gray-600">{item.category}</td>
-                    <td className="p-4 text-center">
-                      <span className="px-2.5 py-1 rounded-md font-black bg-amber-100 text-amber-900">
-                        {item.currentStock} units
-                      </span>
-                    </td>
-                    <td className="p-4 text-center text-gray-500 font-semibold">
-                      {item.reorderLevel} units
-                    </td>
-                    <td className="p-4 font-medium text-gray-700">{item.supplierName}</td>
-                    <td className="p-4 text-right font-black text-emerald-700">
-                      +{item.suggestedUnits} units
-                    </td>
-                    <td className="p-4 text-center">
-                      <Link
-                        href="/admin/forecasting"
-                        className="inline-flex items-center gap-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-[11px] shadow-2xs transition-colors"
-                      >
-                        <Zap size={11} /> 1-Click PO
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </div>
 
-      {/* Supplier & Delivery Quick Access */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-xs">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Building2 size={18} className="text-blue-600" />
-              <h3 className="font-bold text-gray-900 text-sm">Verified Suppliers ({data.suppliersCount})</h3>
-            </div>
-            <Link href="/admin/suppliers" className="text-xs text-blue-600 font-bold hover:underline">
-              View All Suppliers →
-            </Link>
-          </div>
-          <p className="text-xs text-gray-500 mb-3">
-            Top national FMCG manufacturers with direct supply contracts for Mydukur supermarket.
-          </p>
-          <div className="space-y-2">
-            {[
-              { name: 'Amul Dairy Federation', code: 'S001', lead: '1 day', rating: 4.9 },
-              { name: 'ITC Limited', code: 'S002', lead: '2 days', rating: 4.8 },
-              { name: 'Britannia Wholesale', code: 'S003', lead: '1 day', rating: 4.7 },
-              { name: 'Hindustan Unilever (HUL)', code: 'S004', lead: '2 days', rating: 4.9 },
-            ].map((s) => (
-              <div
-                key={s.code}
-                className="flex items-center justify-between p-3 bg-gray-50 rounded-2xl text-xs"
-              >
-                <div>
-                  <span className="font-bold text-gray-900">{s.name}</span>
-                  <span className="ml-2 font-mono text-[10px] text-gray-400">[{s.code}]</span>
-                </div>
-                <div className="flex items-center gap-3 text-gray-600 font-medium">
-                  <span>Lead: {s.lead}</span>
-                  <span className="text-amber-600 font-bold">⭐ {s.rating}</span>
-                </div>
-              </div>
-            ))}
-          </div>
+      {/* Row of 6 KPI cards */}
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 sm:gap-4">
+        <KpiCard
+          index={0}
+          label="Today's Revenue"
+          value={data.todayRevenue}
+          format="price"
+          icon={<IndianRupee size={19} />}
+          iconColor="green"
+          trend={data.revenueTrend}
+          trendUp={data.revenueTrendUp}
+        />
+        <KpiCard
+          index={1}
+          label="Today's Orders"
+          value={data.todayOrdersCount}
+          icon={<ShoppingCart size={19} />}
+          iconColor="blue"
+          trend={data.ordersTrend}
+          trendUp={data.ordersTrendUp}
+        />
+        <KpiCard
+          index={2}
+          label="Units Sold"
+          value={data.todayUnitsSold}
+          icon={<Package size={19} />}
+          iconColor="purple"
+          trend={data.unitsTrend}
+          trendUp={data.unitsTrendUp}
+        />
+        <KpiCard
+          index={3}
+          label="Current Inventory"
+          value={data.totalUnits}
+          icon={<Warehouse size={19} />}
+          iconColor="orange"
+          trend={`${data.totalProducts} SKUs`}
+          trendUp
+        />
+        <KpiCard
+          index={4}
+          label="Low Stock"
+          value={data.lowStockItems.length}
+          icon={<AlertTriangle size={19} />}
+          iconColor="red"
+          trend={data.lowStockItems.length > 0 ? 'Needs reorder' : 'Healthy'}
+          trendUp={data.lowStockItems.length === 0}
+        />
+        <KpiCard
+          index={5}
+          label="Out of Stock"
+          value={data.outOfStockCount}
+          icon={<PackageX size={19} />}
+          iconColor="pink"
+          trend={data.outOfStockCount > 0 ? 'Action needed' : 'None'}
+          trendUp={data.outOfStockCount === 0}
+        />
+      </div>
+
+      {/* Middle row: Sales Overview + Top Selling Products */}
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 sm:gap-5">
+        <div className="xl:col-span-2 sr-stagger" style={{ animationDelay: '100ms' }}>
+          <SalesOverview data={data.monthlySales} />
         </div>
 
-        <div className="bg-white rounded-3xl border border-gray-100 p-6 shadow-xs">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-2">
-              <Truck size={18} className="text-purple-600" />
-              <h3 className="font-bold text-gray-900 text-sm">Inbound Purchase Shipments</h3>
-            </div>
-            <Link href="/admin/purchases" className="text-xs text-purple-600 font-bold hover:underline">
-              Track Deliveries →
+        <Card className="p-5 sm:p-6 sr-stagger" style={{ animationDelay: '150ms' }}>
+          <div className="flex items-center justify-between mb-1">
+            <h2 className="font-bold text-[#0F5132] text-base tracking-tight">Top Selling Products</h2>
+            <Link href="/admin/sales" className="text-xs font-semibold text-[#16A34A] hover:text-[#15803D] transition-colors duration-200">
+              View All →
             </Link>
           </div>
-          <p className="text-xs text-gray-500 mb-3">
-            Track deliveries from approved autonomous POs. When orders arrive at store, click &quot;Receive Stock&quot; to credit inventory.
-          </p>
+          <p className="text-xs text-[#6B7280] mb-4">Ranked by units sold today</p>
 
-          {data.recentPurchases.length === 0 ? (
-            <div className="p-8 bg-gray-50 rounded-2xl text-center text-xs text-gray-400">
-              No active supplier shipments. Generate purchase orders in Autonomous Ordering.
+          {data.topItemsToday.length === 0 ? (
+            <div className="py-8 text-center">
+              <div className="sr-skeleton h-12 mb-2" />
+              <div className="sr-skeleton h-12 mb-2" />
+              <div className="sr-skeleton h-12" />
+              <p className="text-xs text-[#6B7280] mt-4">No sales yet today — items ordered from the store will rank here.</p>
             </div>
           ) : (
-            <div className="space-y-2">
-              {data.recentPurchases.slice(0, 3).map((p) => (
-                <div
-                  key={p.id}
-                  className="flex items-center justify-between p-3 bg-gray-50 rounded-2xl text-xs"
+            <ul className="space-y-2.5">
+              {data.topItemsToday.map(([name, stat], idx) => (
+                <li
+                  key={name}
+                  className="flex items-center gap-3 p-2.5 rounded-xl bg-[#F4FAF6]/70 border border-transparent hover:border-green-100 hover:bg-[#F4FAF6] transition-all duration-200"
                 >
-                  <div>
-                    <span className="font-bold text-gray-900">{p.invoiceNumber}</span>
-                    <span className="text-gray-500 block text-[11px]">{p.supplier?.name}</span>
-                  </div>
-                  <span className="px-2.5 py-1 rounded-md font-bold text-[10px] bg-blue-100 text-blue-800">
-                    {p.status}
+                  <span className="w-6 h-6 rounded-lg bg-white border border-[#E5E7EB] text-[#0F5132] font-bold text-xs flex items-center justify-center shrink-0">
+                    {idx + 1}
                   </span>
-                </div>
+                  <span className={`flex items-center justify-center w-9 h-9 rounded-xl text-sm font-bold shrink-0 ${TILE_COLORS[idx % TILE_COLORS.length]}`}>
+                    {name.charAt(0).toUpperCase()}
+                  </span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-[13px] font-semibold text-[#111827] truncate">{name}</span>
+                    <span className="block text-[11px] text-[#6B7280]">{formatPrice(stat.revenue)}</span>
+                  </span>
+                  <span className="text-right shrink-0">
+                    <span className="block text-[13px] font-bold text-[#111827]">{stat.units} sold</span>
+                    <span className="block text-[11px] text-[#6B7280]">units</span>
+                  </span>
+                </li>
               ))}
-            </div>
+            </ul>
           )}
-        </div>
+        </Card>
       </div>
+
+      {/* Bottom row: 3 cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
+        {/* Category Performance */}
+        <Card className="p-5 sm:p-6 sr-stagger" style={{ animationDelay: '200ms' }}>
+          <h2 className="font-bold text-[#0F5132] text-base tracking-tight">Category Performance</h2>
+          <p className="text-xs text-[#6B7280] mt-0.5 mb-5">Share of stocked units by category</p>
+          {data.categoryPerf.length === 0 ? (
+            <div className="space-y-3">
+              <div className="sr-skeleton h-8" />
+              <div className="sr-skeleton h-8" />
+              <div className="sr-skeleton h-8" />
+            </div>
+          ) : (
+            <ul className="space-y-4">
+              {data.categoryPerf.map((c, idx) => (
+                <li key={c.name}>
+                  <div className="flex items-center justify-between text-xs mb-1.5">
+                    <span className="font-semibold text-[#111827] truncate">{c.name}</span>
+                    <span className="font-bold text-[#6B7280] shrink-0 ml-2">{c.pct.toFixed(1)}%</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-gray-100 overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-all duration-500"
+                      style={{ width: `${Math.max(c.pct, 3)}%`, background: BAR_COLORS[idx % BAR_COLORS.length] }}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+
+        {/* Inventory Alerts */}
+        <Card className="p-5 sm:p-6 sr-stagger" style={{ animationDelay: '250ms' }}>
+          <h2 className="font-bold text-[#0F5132] text-base tracking-tight">Inventory Alerts</h2>
+          <p className="text-xs text-[#6B7280] mt-0.5 mb-4">Live stock health signals</p>
+          <ul className="space-y-2.5">
+            <li>
+              <Link href="/admin/forecasting" className="flex items-center gap-3 p-3 rounded-xl bg-orange-50/70 border border-transparent hover:border-orange-200 transition-all duration-200">
+                <IconTile color="orange"><AlertTriangle size={18} /></IconTile>
+                <span className="flex-1 text-[13px] font-semibold text-[#111827]">Low Stock</span>
+                <span className="text-sm font-bold text-[#111827]">{data.lowStockItems.length}</span>
+              </Link>
+            </li>
+            <li>
+              <Link href="/admin/inventory" className="flex items-center gap-3 p-3 rounded-xl bg-red-50/70 border border-transparent hover:border-red-200 transition-all duration-200">
+                <IconTile color="red"><PackageX size={18} /></IconTile>
+                <span className="flex-1 text-[13px] font-semibold text-[#111827]">Out of Stock</span>
+                <span className="text-sm font-bold text-[#111827]">{data.outOfStockCount}</span>
+              </Link>
+            </li>
+            <li>
+              <Link href="/admin/inventory" className="flex items-center gap-3 p-3 rounded-xl bg-blue-50/70 border border-transparent hover:border-blue-200 transition-all duration-200">
+                <IconTile color="blue"><Boxes size={18} /></IconTile>
+                <span className="flex-1 text-[13px] font-semibold text-[#111827]">Overstock</span>
+                <span className="text-sm font-bold text-[#111827]">{data.overstockCount}</span>
+              </Link>
+            </li>
+            <li>
+              <Link href="/admin/reports" className="flex items-center gap-3 p-3 rounded-xl bg-purple-50/70 border border-transparent hover:border-purple-200 transition-all duration-200">
+                <IconTile color="purple"><CircleAlert size={18} /></IconTile>
+                <span className="flex-1 text-[13px] font-semibold text-[#111837]">Dead Stock</span>
+                <span className="text-sm font-bold text-[#111827]">{data.deadStockCount}</span>
+              </Link>
+            </li>
+          </ul>
+        </Card>
+
+        {/* Demand Forecast */}
+        <Card className="p-5 sm:p-6 sr-stagger md:col-span-2 xl:col-span-1" style={{ animationDelay: '300ms' }}>
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-[#0F5132] text-base tracking-tight">Demand Forecast</h2>
+            <Link href="/admin/forecasting" className="text-xs font-semibold text-[#16A34A] hover:text-[#15803D] transition-colors duration-200">
+              Details →
+            </Link>
+          </div>
+          <p className="text-xs text-[#6B7280] mt-0.5 mb-4">Next month • projected from today&apos;s velocity</p>
+          {data.forecast.length === 0 ? (
+            <div className="p-8 bg-[#F4FAF6] rounded-2xl text-center text-xs text-[#6B7280]">
+              No sales velocity yet today. Forecast appears once orders come in.
+            </div>
+          ) : (
+            <ul className="space-y-2.5">
+              {data.forecast.map((f) => (
+                <li
+                  key={f.name}
+                  className="flex items-center gap-3 p-3 rounded-xl bg-[#F4FAF6]/70 border border-transparent hover:border-green-100 hover:bg-[#F4FAF6] transition-all duration-200"
+                >
+                  <span className="flex items-center justify-center w-8 h-8 rounded-xl bg-green-100 text-[#16A34A] shrink-0">
+                    <TrendingUp size={16} />
+                  </span>
+                  <span className="flex-1 min-w-0 text-[13px] font-semibold text-[#111827] truncate">{f.name}</span>
+                  <span className="text-[13px] font-bold text-[#0F5132] shrink-0">
+                    {f.projectedUnits.toLocaleString('en-IN')} <span className="font-medium text-[#6B7280]">units</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <Link
+            href="/admin/forecasting"
+            className="mt-4 flex items-center justify-center gap-1.5 w-full px-3 py-2.5 rounded-xl text-xs font-semibold bg-[#F4FAF6] text-[#0F5132] hover:bg-green-100 border border-green-100 transition-all duration-200"
+          >
+            <Zap size={13} /> Open Autonomous Ordering <ArrowRight size={13} />
+          </Link>
+        </Card>
+      </div>
+
+      {/* Live context strip (kept from existing data, restyled) */}
+      <Card className="px-5 py-4 flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-6 text-xs text-[#6B7280]">
+        <span className="inline-flex items-center gap-1.5 font-semibold text-emerald-700">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+          Live database connected
+        </span>
+        <span>{data.totalOrdersCount} total orders • {data.pendingOrdersCount} pending</span>
+        <span>All-time revenue {formatPrice(data.allTimeRevenue)}</span>
+        <span className="sm:ml-auto">{data.historicalCsvRecordsCount} historical training records</span>
+      </Card>
     </div>
   )
 }

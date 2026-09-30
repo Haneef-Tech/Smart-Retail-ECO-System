@@ -1,17 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { readJsonBody, validate } from '@/lib/api-response'
+import { incomingStockSchema } from '@/lib/validators/purchases'
+import { checkRateLimit } from '@/lib/rate-limit'
+import { guardRoles } from '@/lib/auth-guard'
 
 export async function POST(req: NextRequest) {
+  const { denied } = await guardRoles(['ADMIN', 'STAFF'])
+  if (denied) return denied
+  const limited = await checkRateLimit(req, 'standard')
+  if (limited) return limited
   try {
-    const body = await req.json()
-    const { productId, supplierId, quantity, purchasePrice, invoiceNumber, notes } = body
+    const raw = await readJsonBody(req)
+    if (!raw.ok) return raw.response
+    const parsed = validate(incomingStockSchema, raw.body)
+    if (!parsed.ok) return parsed.response
+    const { productId, supplierId, quantity, purchasePrice, invoiceNumber, notes } = parsed.data
 
-    if (!productId || !supplierId || !quantity || purchasePrice === undefined) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
-    }
-
-    const qty = parseInt(quantity)
-    const price = parseFloat(purchasePrice)
+    const qty = quantity
+    const price = purchasePrice
     const invNo = invoiceNumber || `PO-MANUAL-${Date.now()}`
 
     const result = await db.$transaction(async (tx) => {

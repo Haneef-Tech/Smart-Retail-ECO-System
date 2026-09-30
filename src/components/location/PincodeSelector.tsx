@@ -32,6 +32,12 @@ export default function PincodeSelector({ value, onChange, error }: Props) {
       setResults([])
       return
     }
+    // Don't re-search the display label we set on select
+    // ("516172 — Mydukur, Kadapa") — it would 400 on length and spam the console.
+    if (value && query === `${value.pincode} — ${value.area}, ${value.city}`) {
+      setResults([])
+      return
+    }
     const timeout = setTimeout(async () => {
       setLoading(true)
       try {
@@ -54,7 +60,7 @@ export default function PincodeSelector({ value, onChange, error }: Props) {
       }
     }, 250)
     return () => clearTimeout(timeout)
-  }, [query])
+  }, [query, value])
 
   const select = (r: PincodeResult) => {
     onChange(r)

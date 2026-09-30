@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { guardRoles } from '@/lib/auth-guard'
+import { checkRateLimit } from '@/lib/rate-limit'
+import { readJsonBody, validate } from '@/lib/api-response'
+import { supplierCreateSchema } from '@/lib/validators/suppliers'
 
 export async function GET() {
+  const { denied } = await guardRoles(['ADMIN', 'STAFF'])
+  if (denied) return denied
+  const limited = await checkRateLimit(null, 'standard')
+  if (limited) return limited
   try {
     const suppliers = await db.supplier.findMany({
       orderBy: { code: 'asc' },
@@ -27,13 +35,16 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const { denied } = await guardRoles(['ADMIN', 'STAFF'])
+  if (denied) return denied
+  const limited = await checkRateLimit(req, 'standard')
+  if (limited) return limited
   try {
-    const body = await req.json()
-    const { code, name, contactName, email, phone, address, categories, rating, leadTimeDays } = body
-
-    if (!code || !name) {
-      return NextResponse.json({ error: 'Supplier code and name are required' }, { status: 400 })
-    }
+    const raw = await readJsonBody(req)
+    if (!raw.ok) return raw.response
+    const parsed = validate(supplierCreateSchema, raw.body)
+    if (!parsed.ok) return parsed.response
+    const { code, name, contactName, email, phone, address, categories, rating, leadTimeDays } = parsed.data
 
     const supplier = await db.supplier.create({
       data: {
@@ -44,8 +55,8 @@ export async function POST(req: NextRequest) {
         phone,
         address,
         categories: categories || 'General FMCG',
-        rating: rating ? parseFloat(rating) : 4.8,
-        leadTimeDays: leadTimeDays ? parseInt(leadTimeDays) : 2,
+        rating: rating ?? 4.8,
+        leadTimeDays: leadTimeDays ?? 2,
       },
     })
 

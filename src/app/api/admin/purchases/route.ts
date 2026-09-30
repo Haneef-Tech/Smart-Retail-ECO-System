@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { guardRoles } from '@/lib/auth-guard'
+import { checkRateLimit } from '@/lib/rate-limit'
+import { readJsonBody, validate } from '@/lib/api-response'
+import { purchaseCreateSchema, purchaseStatusSchema } from '@/lib/validators/purchases'
 
 export async function GET() {
+  const { denied } = await guardRoles(['ADMIN', 'STAFF'])
+  if (denied) return denied
+  const limited = await checkRateLimit(null, 'standard')
+  if (limited) return limited
   try {
     const purchases = await db.purchase.findMany({
       include: {
@@ -41,16 +49,16 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const { denied } = await guardRoles(['ADMIN', 'STAFF'])
+  if (denied) return denied
+  const limited = await checkRateLimit(req, 'standard')
+  if (limited) return limited
   try {
-    const body = await req.json()
-    const { supplierId, productId, quantity, purchasePrice, notes } = body
-
-    if (!supplierId || !productId || !quantity || quantity <= 0) {
-      return NextResponse.json(
-        { error: 'supplierId, productId, and positive quantity are required' },
-        { status: 400 }
-      )
-    }
+    const raw = await readJsonBody(req)
+    if (!raw.ok) return raw.response
+    const parsed = validate(purchaseCreateSchema, raw.body)
+    if (!parsed.ok) return parsed.response
+    const { supplierId, productId, quantity, purchasePrice, notes } = parsed.data
 
     const product = await db.product.findUnique({ where: { id: productId } })
     if (!product) {
@@ -99,13 +107,16 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  const { denied } = await guardRoles(['ADMIN', 'STAFF'])
+  if (denied) return denied
+  const limited = await checkRateLimit(req, 'standard')
+  if (limited) return limited
   try {
-    const body = await req.json()
-    const { purchaseId, status } = body
-
-    if (!purchaseId || !status) {
-      return NextResponse.json({ error: 'purchaseId and status are required' }, { status: 400 })
-    }
+    const raw = await readJsonBody(req)
+    if (!raw.ok) return raw.response
+    const parsed = validate(purchaseStatusSchema, raw.body)
+    if (!parsed.ok) return parsed.response
+    const { purchaseId, status } = parsed.data
 
     const existing = await db.purchase.findUnique({
       where: { id: purchaseId },

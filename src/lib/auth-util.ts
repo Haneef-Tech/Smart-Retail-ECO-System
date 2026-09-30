@@ -35,19 +35,8 @@ export function extractAuthFromRequest(req: NextRequest): ExtractedAuth {
     return { uid: null, email: null, name: null, rawToken: null }
   }
 
-  // Handle known admin token aliases
-  if (
-    rawToken === 'admin-token-haneef123' ||
-    rawToken === 'admin-uid-haneef123' ||
-    rawToken === 'admin-uid'
-  ) {
-    return {
-      uid: 'admin-uid-haneef123',
-      email: 'aluruhaneef1@gmail.com',
-      name: 'Haneef Admin',
-      rawToken,
-    }
-  }
+  // NOTE: No hardcoded token aliases. Only verifiable credentials are trusted;
+  // role decisions must go through src/lib/auth-guard.ts (requireRole).
 
   // If token is a Firebase JWT (header.payload.signature)
   if (rawToken.includes('.')) {

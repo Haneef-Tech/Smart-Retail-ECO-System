@@ -1,7 +1,9 @@
 import { db } from '@/lib/db'
 import { formatPrice, formatDateTime } from '@/lib/utils'
+import { requirePageRole } from '@/lib/auth-guard'
 
 export default async function AdminBillsPage() {
+  await requirePageRole(['ADMIN', 'STAFF'])
   const bills = await db.bill.findMany({
     orderBy: { generatedAt: 'desc' },
     include: { order: { include: { customer: { select: { name: true } } } } },

@@ -1,8 +1,10 @@
 import { db } from '@/lib/db'
 import { formatPrice, formatDateTime } from '@/lib/utils'
 import { TrendingUp, ShoppingBag, DollarSign, CreditCard } from 'lucide-react'
+import { requirePageRole } from '@/lib/auth-guard'
 
 export default async function AdminSalesPage() {
+  await requirePageRole(['ADMIN', 'STAFF'])
   const sales = await db.sale.findMany({
     orderBy: { createdAt: 'desc' },
     include: {

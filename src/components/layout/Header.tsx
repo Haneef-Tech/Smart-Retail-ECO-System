@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ShoppingCart, User, Package, Search, Menu, X, LogOut, Settings } from 'lucide-react'
+import { ShoppingCart, User, Package, Search, Menu, X, LogOut, Settings, MapPin } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { useCartStore } from '@/store/cart'
 import { useAuth } from '@/context/AuthContext'
@@ -17,7 +17,6 @@ export default function Header() {
   const [search, setSearch] = useState('')
   const [menuOpen, setMenuOpen] = useState(false)
   const [userMenuOpen, setUserMenuOpen] = useState(false)
-  const [catMenuOpen, setCatMenuOpen] = useState(false)
   const userMenuRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -45,73 +44,78 @@ export default function Header() {
   }
 
   return (
-    <header className="bg-white shadow-sm sticky top-0 z-50">
+    <header className="bg-white/95 backdrop-blur sticky top-0 z-50 shadow-[0_2px_16px_rgba(0,0,0,0.06)] border-b border-[#E5E7EB]/70">
       {/* Top bar */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6">
-        <div className="flex items-center gap-4 h-16">
+        <div className="flex items-center gap-3 sm:gap-5 h-16">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-2 shrink-0">
-            <div className="w-9 h-9 bg-green-600 rounded-lg flex items-center justify-center">
+          <Link href="/" className="flex items-center gap-2 shrink-0 sr-interactive rounded-xl">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center shadow-[0_4px_14px_rgba(22,163,74,0.3)] [background:linear-gradient(135deg,#16A34A,#22C55E)]">
               <span className="text-white font-bold text-sm">SR</span>
             </div>
-            <span className="font-bold text-green-700 text-xl hidden sm:block">SmartRetail</span>
+            <span className="font-bold text-[#0F5132] text-xl hidden sm:block tracking-tight">SmartRetail</span>
           </Link>
 
           {/* Search - desktop */}
-          <form onSubmit={handleSearch} className="flex-1 max-w-xl hidden md:flex">
-            <div className="flex w-full border border-gray-200 rounded-full overflow-hidden focus-within:border-green-500 focus-within:ring-2 focus-within:ring-green-100 transition-all">
+          <form onSubmit={handleSearch} className="flex-1 max-w-2xl hidden md:flex">
+            <div className="flex w-full items-center bg-[#F4FAF6] border border-[#E5E7EB] rounded-xl overflow-hidden transition-all duration-200 focus-within:border-[#16A34A] focus-within:ring-2 focus-within:ring-green-100 focus-within:bg-white">
+              <Search size={17} className="ml-4 text-[#6B7280] shrink-0" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search products…"
-                className="flex-1 px-4 py-2 text-sm outline-none bg-gray-50"
+                placeholder="Search for products..."
+                className="flex-1 px-3 py-2.5 text-sm outline-none bg-transparent text-[#111827] placeholder:text-[#6B7280]"
               />
-              <button type="submit" className="px-4 bg-green-600 hover:bg-green-700 text-white flex items-center gap-1 transition-colors">
-                <Search size={16} />
+              <button type="submit" className="sr-btn-primary m-1 px-5 py-1.5 text-sm font-semibold">
+                Search
               </button>
             </div>
           </form>
 
           {/* Right actions */}
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex items-center gap-1 sm:gap-2 ml-auto">
+            {/* Location */}
+            <div className="hidden lg:flex items-center gap-1.5 px-3 py-2 rounded-xl text-[#6B7280]">
+              <MapPin size={17} className="text-[#16A34A]" />
+              <span className="text-xs font-medium text-[#111827] leading-tight">Mydukur<br /><span className="text-[#6B7280]">516172</span></span>
+            </div>
+
             {/* User menu */}
             <div className="relative" ref={userMenuRef}>
               <button
                 onClick={() => setUserMenuOpen((o) => !o)}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors"
+                aria-label="Account"
+                className="flex items-center gap-1.5 p-2.5 rounded-xl hover:bg-[#F4FAF6] text-[#6B7280] hover:text-[#0F5132] transition-all duration-200"
               >
-                <User size={20} className="text-gray-600" />
-                <span className="text-sm text-gray-700 hidden sm:block max-w-[100px] truncate">
-                  {user ? user.email?.split('@')[0] : 'Login'}
-                </span>
+                <User size={20} />
               </button>
               {userMenuOpen && (
-                <div className="absolute right-0 top-full mt-1 w-52 bg-white border border-gray-100 rounded-xl shadow-lg z-50 py-1">
+                <div className="sr-toast-in absolute right-0 top-full mt-2 w-52 bg-white border border-[#E5E7EB] rounded-2xl shadow-[0_12px_32px_rgba(0,0,0,0.10)] z-50 py-1.5 overflow-hidden">
                   {user ? (
                     <>
                       <div className="px-4 py-2 border-b border-gray-100">
-                        <p className="text-xs text-gray-500">Signed in as</p>
-                        <p className="text-sm font-medium text-gray-800 truncate">{user.email}</p>
+                        <p className="text-xs text-[#6B7280]">Signed in as</p>
+                        <p className="text-sm font-medium text-[#111827] truncate">{user.email}</p>
                       </div>
-                      <Link href="/profile" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-gray-50 text-gray-700">
+                      <Link href="/profile" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-[#F4FAF6] text-[#111827] transition-colors duration-200">
                         <User size={15} /> My Profile
                       </Link>
-                      <Link href="/orders" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-gray-50 text-gray-700">
+                      <Link href="/orders" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-[#F4FAF6] text-[#111827] transition-colors duration-200">
                         <Package size={15} /> My Orders
                       </Link>
                       {isAdmin && (
-                        <Link href="/admin" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-green-50 text-green-700 border-t border-gray-100">
+                        <Link href="/admin" onClick={() => setUserMenuOpen(false)} className="flex items-center gap-2 px-4 py-2.5 text-sm hover:bg-green-50 text-green-700 border-t border-gray-100 transition-colors duration-200">
                           <Settings size={15} /> Admin Panel
                         </Link>
                       )}
-                      <button onClick={handleLogout} className="flex items-center gap-2 w-full px-4 py-2.5 text-sm hover:bg-red-50 text-red-600 border-t border-gray-100">
+                      <button onClick={handleLogout} className="flex items-center gap-2 w-full px-4 py-2.5 text-sm hover:bg-red-50 text-red-600 border-t border-gray-100 transition-colors duration-200">
                         <LogOut size={15} /> Sign Out
                       </button>
                     </>
                   ) : (
                     <>
-                      <Link href="/auth/login" onClick={() => setUserMenuOpen(false)} className="block px-4 py-2.5 text-sm hover:bg-gray-50 text-gray-700">Sign In</Link>
-                      <Link href="/auth/register" onClick={() => setUserMenuOpen(false)} className="block px-4 py-2.5 text-sm hover:bg-gray-50 text-gray-700">Create Account</Link>
+                      <Link href="/auth/login" onClick={() => setUserMenuOpen(false)} className="block px-4 py-2.5 text-sm hover:bg-[#F4FAF6] text-[#111827] transition-colors duration-200">Sign In</Link>
+                      <Link href="/auth/register" onClick={() => setUserMenuOpen(false)} className="block px-4 py-2.5 text-sm hover:bg-[#F4FAF6] text-[#111827] transition-colors duration-200">Create Account</Link>
                     </>
                   )}
                 </div>
@@ -119,51 +123,38 @@ export default function Header() {
             </div>
 
             {/* Cart */}
-            <Link href="/cart" className="relative flex items-center gap-1.5 px-3 py-2 rounded-lg hover:bg-green-50 transition-colors">
-              <ShoppingCart size={20} className="text-gray-600" />
-              <span className="text-sm text-gray-700 hidden sm:block">Cart</span>
+            <Link href="/cart" className="relative p-2.5 rounded-xl hover:bg-[#F4FAF6] text-[#6B7280] hover:text-[#0F5132] transition-all duration-200">
+              <ShoppingCart size={20} />
               {itemCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-green-600 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                <span className="absolute -top-0.5 -right-0.5 bg-[#EF4444] text-white text-[10px] font-bold rounded-full min-w-5 h-5 px-1 flex items-center justify-center shadow">
                   {itemCount > 99 ? '99+' : itemCount}
                 </span>
               )}
             </Link>
 
             {/* Mobile menu toggle */}
-            <button onClick={() => setMenuOpen((o) => !o)} className="md:hidden p-2 rounded-lg hover:bg-gray-100">
+            <button onClick={() => setMenuOpen((o) => !o)} aria-label="Menu" className="md:hidden p-2.5 rounded-xl hover:bg-[#F4FAF6] text-[#111827] transition-colors duration-200">
               {menuOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
           </div>
         </div>
-
-        {/* Category nav - desktop */}
-        <nav className="hidden md:flex items-center gap-1 pb-2 overflow-x-auto">
-          {CATEGORIES.map((cat) => (
-            <Link
-              key={cat}
-              href={`/categories/${encodeURIComponent(cat)}`}
-              className="px-3 py-1 text-sm text-gray-600 hover:text-green-700 hover:bg-green-50 rounded-full whitespace-nowrap transition-colors"
-            >
-              {cat}
-            </Link>
-          ))}
-        </nav>
       </div>
 
       {/* Mobile expanded menu */}
       {menuOpen && (
-        <div className="md:hidden border-t border-gray-100 bg-white px-4 pb-4">
+        <div className="md:hidden border-t border-[#E5E7EB] bg-white px-4 pb-4 sr-page-enter">
           {/* Mobile search */}
           <form onSubmit={handleSearch} className="flex mt-3 mb-3">
-            <div className="flex w-full border border-gray-200 rounded-full overflow-hidden focus-within:border-green-500">
+            <div className="flex w-full items-center bg-[#F4FAF6] border border-[#E5E7EB] rounded-xl overflow-hidden focus-within:border-[#16A34A]">
+              <Search size={16} className="ml-3.5 text-[#6B7280] shrink-0" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search products…"
-                className="flex-1 px-4 py-2 text-sm outline-none bg-gray-50"
+                placeholder="Search for products..."
+                className="flex-1 px-2.5 py-2.5 text-sm outline-none bg-transparent text-[#111827] placeholder:text-[#6B7280]"
               />
-              <button type="submit" className="px-4 bg-green-600 text-white">
-                <Search size={16} />
+              <button type="submit" className="sr-btn-primary m-1 px-4 py-1.5 text-sm font-semibold">
+                Go
               </button>
             </div>
           </form>
@@ -174,7 +165,7 @@ export default function Header() {
                 key={cat}
                 href={`/categories/${encodeURIComponent(cat)}`}
                 onClick={() => setMenuOpen(false)}
-                className="px-3 py-1 text-sm bg-green-50 text-green-700 rounded-full"
+                className="px-3 py-1.5 text-xs font-medium bg-[#F4FAF6] text-[#0F5132] rounded-full border border-green-100"
               >
                 {cat}
               </Link>
@@ -185,4 +176,3 @@ export default function Header() {
     </header>
   )
 }
-

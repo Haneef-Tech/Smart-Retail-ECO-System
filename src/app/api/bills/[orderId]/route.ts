@@ -1,10 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { extractAuthFromRequest } from '@/lib/auth-util'
+import { isPrivilegedRequest } from '@/lib/auth-guard'
+import { validate } from '@/lib/api-response'
+import { orderIdParamSchema } from '@/lib/validators/common'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ orderId: string }> }) {
   try {
-    const { orderId } = await params
+    const { orderId: rawId } = await params
+    const idCheck = validate(orderIdParamSchema, { orderId: rawId })
+    if (!idCheck.ok) return idCheck.response
+    const { orderId } = idCheck.data
     const { uid, email } = extractAuthFromRequest(req)
 
     const order = await db.order.findUnique({
@@ -32,11 +38,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ orde
       return NextResponse.json({ error: 'Order not found' }, { status: 404 })
     }
 
-    // Check permissions if user identifier is provided
-    const isUserAdmin =
-      email === 'aluruhaneef1@gmail.com' ||
-      uid === 'admin-uid' ||
-      uid === 'admin-uid-haneef123'
+    // Admin access requires a verified ADMIN/STAFF session — never a uid/email string match.
+    const isUserAdmin = await isPrivilegedRequest()
 
     if (uid && !isUserAdmin) {
       let isOwner = order.customerId === uid

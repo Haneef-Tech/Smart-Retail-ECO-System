@@ -6,78 +6,81 @@ import Link from 'next/link'
 import { useAuth } from '@/context/AuthContext'
 import {
   LayoutDashboard,
-  CheckCircle2,
-  PackagePlus,
-  Building2,
+  Package,
+  Warehouse,
+  ShoppingCart,
+  TrendingUp,
   Truck,
-  Zap,
+  Users,
+  Building2,
+  BarChart3,
   Bot,
-  ExternalLink,
+  Zap,
+  Database,
+  Settings,
   LogOut,
-  UploadCloud,
   Menu,
   X,
-  Store,
+    Store,
+    Search,
+    ExternalLink,
 } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import OrderNotifications from '@/components/admin/OrderNotifications'
 
-const ADMIN_EMAIL = 'aluruhaneef1@gmail.com'
+// Server-side authorization is enforced per page via requirePageRole;
+// this client shell only mirrors the role for instant UI gating.
 
+/* Sidebar labels per design spec; every href reuses an existing admin route
+   so no navigation or data flow changes. */
 const NAV_ITEMS = [
-  {
-    href: '/admin',
-    label: 'Realtime Dashboard',
-    icon: LayoutDashboard,
-    badge: 'Live',
-    badgeColor: 'bg-emerald-100 text-emerald-800',
-  },
-  {
-    href: '/admin/orders',
-    label: 'Confirm Orders',
-    icon: CheckCircle2,
-  },
-  {
-    href: '/admin/sales-upload',
-    label: 'Sales Upload',
-    icon: UploadCloud,
-    badge: 'RAG Train',
-    badgeColor: 'bg-indigo-100 text-indigo-800',
-  },
-  {
-    href: '/admin/inventory',
-    label: 'Inventory Entry',
-    icon: PackagePlus,
-  },
-  {
-    href: '/admin/suppliers',
-    label: '10 Suppliers Directory',
-    icon: Building2,
-    badge: '10 Vendors',
-    badgeColor: 'bg-blue-100 text-blue-800',
-  },
-  {
-    href: '/admin/purchases',
-    label: 'Supplier Delivery Status',
-    icon: Truck,
-  },
-  {
-    href: '/admin/forecasting',
-    label: 'Autonomous Ordering',
-    icon: Zap,
-    badge: 'AI Engine',
-    badgeColor: 'bg-purple-100 text-purple-800',
-  },
-  {
-    href: '/admin/ai',
-    label: 'AI Assistant',
-    icon: Bot,
-  },
+  { href: '/admin', label: 'Dashboard', icon: LayoutDashboard },
+  { href: '/admin/products', label: 'Products', icon: Package },
+  { href: '/admin/inventory', label: 'Inventory', icon: Warehouse },
+  { href: '/admin/orders', label: 'Orders', icon: ShoppingCart },
+  { href: '/admin/sales', label: 'Sales', icon: TrendingUp },
+  { href: '/admin/purchases', label: 'Purchases', icon: Truck },
+  { href: '/admin/customers', label: 'Customers', icon: Users },
+  { href: '/admin/suppliers', label: 'Suppliers', icon: Building2 },
+  { href: '/admin/reports', label: 'Analytics', icon: BarChart3 },
+  { href: '/admin/ai', label: 'AI Quick Checkup', icon: Bot },
+  { href: '/admin/forecasting', label: 'Forecasting', icon: Zap },
+  { href: '/admin/sales-upload', label: 'Data Management', icon: Database },
+  { href: '/admin/gst', label: 'Settings', icon: Settings },
 ]
 
+function NavLinks({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
+  return (
+    <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
+      {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+        const isActive = pathname === href
+        return (
+          <Link
+            key={href}
+            href={href}
+            onClick={onNavigate}
+            className={cn(
+              'flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl text-[13px] transition-all duration-200',
+              isActive ? 'sr-nav-active font-semibold' : 'text-[#111827] font-medium hover:bg-[#F4FAF6] hover:text-[#0F5132]'
+            )}
+          >
+            <Icon size={17} className={cn('shrink-0', isActive ? 'text-white' : 'text-[#6B7280]')} />
+            <span className="truncate">{label}</span>
+          </Link>
+        )
+      })}
+    </nav>
+  )
+}
+
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
-  const { user, loading, logout } = useAuth()
+  const { user, loading, isAdmin, sessionEmail, logout } = useAuth()
   const router = useRouter()
   const pathname = usePathname()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  // Password-login (server session) admins have a role but no Firebase user —
+  // gate on isAdmin so both login paths can enter.
+  const displayEmail = user?.email ?? sessionEmail ?? ''
 
   // Auto-close mobile drawer when user navigates to a new page
   useEffect(() => {
@@ -85,58 +88,24 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }, [pathname])
 
   useEffect(() => {
-    if (!loading && (!user || user.email !== ADMIN_EMAIL)) {
+    if (!loading && !isAdmin) {
       router.replace('/')
     }
-  }, [user, loading, router])
+  }, [isAdmin, loading, router])
 
-  if (loading || !user || user.email !== ADMIN_EMAIL) {
+  if (loading || !isAdmin) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="sr-skeleton w-40 h-4" />
+          <div className="sr-skeleton w-64 h-24" />
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-gray-50/80">
-      {/* Mobile Top App Bar (Visible on phones & small tablets) */}
-      <header className="md:hidden sticky top-0 z-30 flex items-center justify-between px-3.5 py-3 bg-white border-b border-gray-200/90 shadow-2xs">
-        <div className="flex items-center gap-2.5">
-          <button
-            onClick={() => setMobileMenuOpen(true)}
-            aria-label="Open Navigation Menu"
-            className="p-1.5 -ml-1 text-gray-700 hover:text-green-700 hover:bg-gray-100 rounded-xl transition-colors"
-          >
-            <Menu size={22} />
-          </button>
-
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-gradient-to-br from-green-600 to-emerald-700 rounded-lg flex items-center justify-center text-white font-black text-xs shadow-xs">
-              SR
-            </div>
-            <div>
-              <p className="font-bold text-gray-900 text-sm leading-none">SmartRetail</p>
-              <p className="text-[10px] text-green-600 font-bold flex items-center gap-1 mt-0.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                Admin Panel
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Link
-            href="/"
-            target="_blank"
-            className="inline-flex items-center gap-1 text-[11px] font-bold text-green-700 bg-green-50 hover:bg-green-100 px-2.5 py-1.5 rounded-lg border border-green-200 transition-colors"
-          >
-            <Store size={13} />
-            <span>Store</span>
-          </Link>
-        </div>
-      </header>
-
+    <div className="min-h-screen flex flex-col md:flex-row">
       {/* Mobile Slide-Over Drawer Navigation */}
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-50 md:hidden flex">
@@ -148,84 +117,49 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           />
 
           {/* Sliding Drawer Container */}
-          <div className="relative z-50 w-72 max-w-[85vw] bg-white flex flex-col h-full shadow-2xl">
+          <div className="relative z-50 w-72 max-w-[85vw] bg-white flex flex-col h-full shadow-2xl sr-toast-in">
             {/* Drawer Header */}
-            <div className="p-4 border-b border-gray-100 flex items-center justify-between">
+            <div className="p-4 border-b border-[#E5E7EB] flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 bg-gradient-to-br from-green-600 to-emerald-700 rounded-xl flex items-center justify-center text-white font-black text-sm shadow-xs">
+                <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white font-bold text-sm [background:linear-gradient(135deg,#16A34A,#22C55E)]">
                   SR
                 </div>
                 <div>
-                  <p className="font-bold text-gray-900 text-sm leading-tight">SmartRetail</p>
-                  <p className="text-[10px] text-gray-400">Mydukur, Kadapa (516172)</p>
+                  <p className="font-bold text-[#111827] text-sm leading-tight">SmartRetail</p>
+                  <p className="text-[10px] text-[#6B7280]">Mydukur, Kadapa (516172)</p>
                 </div>
               </div>
 
               <button
                 onClick={() => setMobileMenuOpen(false)}
                 aria-label="Close menu"
-                className="p-1.5 text-gray-400 hover:text-gray-700 rounded-lg hover:bg-gray-100 transition-colors"
+                className="p-1.5 text-[#6B7280] hover:text-[#111827] rounded-lg hover:bg-[#F4FAF6] transition-colors duration-200"
               >
                 <X size={18} />
               </button>
             </div>
 
-            {/* Navigation Links */}
-            <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
-              <p className="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-                Operational Navigation
-              </p>
-
-              {NAV_ITEMS.map(({ href, label, icon: Icon, badge, badgeColor }) => {
-                const isActive = pathname === href
-                return (
-                  <Link
-                    key={href}
-                    href={href}
-                    onClick={() => setMobileMenuOpen(false)}
-                    className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                      isActive
-                        ? 'bg-green-600 text-white shadow-sm shadow-green-600/20'
-                        : 'text-gray-700 hover:bg-green-50 hover:text-green-700'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <Icon size={17} className={isActive ? 'text-white' : 'text-gray-500'} />
-                      <span>{label}</span>
-                    </div>
-                    {badge && (
-                      <span
-                        className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-md ${
-                          isActive ? 'bg-white/20 text-white' : badgeColor
-                        }`}
-                      >
-                        {badge}
-                      </span>
-                    )}
-                  </Link>
-                )
-              })}
-            </nav>
+            <NavLinks pathname={pathname} onNavigate={() => setMobileMenuOpen(false)} />
 
             {/* Mobile Drawer Bottom Area */}
-            <div className="p-3 border-t border-gray-100 bg-gray-50/80 space-y-2">
+            <div className="p-3 border-t border-[#E5E7EB] bg-[#F4FAF6]/60 space-y-2">
               <Link
                 href="/"
                 target="_blank"
                 onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center justify-center gap-1.5 w-full px-3 py-2 rounded-xl text-xs bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 font-bold transition-colors shadow-2xs"
+                className="flex items-center justify-center gap-1.5 w-full px-3 py-2 rounded-xl text-xs bg-white border border-[#E5E7EB] text-[#111827] hover:bg-[#F4FAF6] font-semibold transition-all duration-200"
               >
                 <ExternalLink size={13} /> View Customer Store
               </Link>
 
               <div className="pt-1">
-                <p className="text-[11px] text-gray-500 truncate font-medium px-1 mb-1.5">{user.email}</p>
+                <p className="text-[11px] text-[#6B7280] truncate font-medium px-1 mb-1.5">{displayEmail}</p>
                 <button
                   onClick={() => {
                     logout()
                     router.push('/')
                   }}
-                  className="flex items-center justify-center gap-2 w-full px-3 py-2 rounded-xl text-xs bg-red-50 text-red-600 hover:bg-red-100 transition-colors font-bold"
+                  className="flex items-center justify-center gap-2 w-full px-3 py-2 rounded-xl text-xs bg-red-50 text-red-600 hover:bg-red-100 transition-colors duration-200 font-semibold"
                 >
                   <LogOut size={13} /> Sign Out
                 </button>
@@ -236,78 +170,40 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       )}
 
       {/* Desktop Sidebar (Visible on screens >= md) */}
-      <aside className="hidden md:flex md:w-64 md:flex-col md:shrink-0 md:h-screen md:sticky md:top-0 bg-white border-r border-gray-100 shadow-xs">
+      <aside className="hidden md:flex md:w-60 lg:w-64 md:flex-col md:shrink-0 md:h-screen md:sticky md:top-0 bg-white border-r border-[#E5E7EB]">
         {/* Brand Header */}
-        <div className="p-5 border-b border-gray-100">
+        <div className="p-5 border-b border-[#E5E7EB]/70">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-gradient-to-br from-green-600 to-emerald-700 rounded-xl flex items-center justify-center text-white font-black text-base shadow-sm">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-base shadow-[0_4px_14px_rgba(22,163,74,0.3)] [background:linear-gradient(135deg,#16A34A,#22C55E)]">
               SR
             </div>
             <div>
-              <p className="font-bold text-gray-900 text-base leading-tight">SmartRetail</p>
-              <p className="text-[11px] text-green-600 font-semibold tracking-wide flex items-center gap-1.5 mt-0.5">
-                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-                Autonomous Admin
-              </p>
+              <p className="font-bold text-[#0F5132] text-base leading-tight tracking-tight">SmartRetail</p>
+              <p className="text-[11px] text-[#6B7280] font-medium mt-0.5">Admin Panel</p>
             </div>
           </div>
-          <p className="text-[11px] text-gray-400 mt-2">Store: Mydukur, Kadapa, AP (516172)</p>
         </div>
 
-        {/* Clean Nav Links */}
-        <nav className="flex-1 p-3 space-y-1.5 overflow-y-auto">
-          <p className="px-3 py-1 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-            Operational Control Center
-          </p>
-
-          {NAV_ITEMS.map(({ href, label, icon: Icon, badge, badgeColor }) => {
-            const isActive = pathname === href
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={`flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                  isActive
-                    ? 'bg-green-600 text-white shadow-sm shadow-green-600/20'
-                    : 'text-gray-700 hover:bg-green-50 hover:text-green-700'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <Icon size={17} className={isActive ? 'text-white' : 'text-gray-500'} />
-                  <span>{label}</span>
-                </div>
-                {badge && (
-                  <span
-                    className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-md ${
-                      isActive ? 'bg-white/20 text-white' : badgeColor
-                    }`}
-                  >
-                    {badge}
-                  </span>
-                )}
-              </Link>
-            )
-          })}
-        </nav>
+        <NavLinks pathname={pathname} />
 
         {/* Bottom Storefront & Signout Area */}
-        <div className="p-3 border-t border-gray-100 bg-gray-50/70 space-y-2">
+        <div className="p-3 border-t border-[#E5E7EB] bg-[#F4FAF6]/50 space-y-2">
           <Link
             href="/"
             target="_blank"
-            className="flex items-center justify-center gap-1.5 w-full px-3 py-2 rounded-xl text-xs bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 font-bold transition-colors shadow-2xs"
+            className="flex items-center justify-center gap-1.5 w-full px-3 py-2 rounded-xl text-xs bg-white border border-[#E5E7EB] text-[#111827] hover:border-green-200 hover:text-[#0F5132] font-semibold transition-all duration-200"
           >
             <ExternalLink size={13} /> View Customer Store
           </Link>
 
           <div className="pt-1">
-            <p className="text-[11px] text-gray-500 truncate font-medium px-1 mb-1.5">{user.email}</p>
+            <p className="text-[11px] text-[#6B7280] truncate font-medium px-1 mb-1.5">{displayEmail}</p>
             <button
               onClick={() => {
                 logout()
                 router.push('/')
               }}
-              className="flex items-center justify-center gap-2 w-full px-3 py-2 rounded-xl text-xs bg-red-50 text-red-600 hover:bg-red-100 transition-colors font-bold"
+              className="flex items-center justify-center gap-2 w-full px-3 py-2 rounded-xl text-xs bg-red-50 text-red-600 hover:bg-red-100 transition-colors duration-200 font-semibold"
             >
               <LogOut size={13} /> Sign Out
             </button>
@@ -315,12 +211,66 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
       </aside>
 
-      {/* Main Content Area (100% width on mobile, full scrollable view) */}
-      <main className="flex-1 min-w-0 w-full overflow-x-hidden">
-        <div className="w-full max-w-7xl mx-auto p-3.5 sm:p-5 md:p-6 lg:p-8">
-          {children}
-        </div>
-      </main>
+      {/* Main column */}
+      <div className="flex-1 min-w-0 w-full flex flex-col">
+        {/* Top bar: hamburger (mobile) + search + bell + admin profile */}
+        <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-[#E5E7EB]/70 shadow-[0_2px_16px_rgba(0,0,0,0.04)]">
+          <div className="flex items-center gap-2 sm:gap-3 px-3.5 sm:px-5 lg:px-8 h-16">
+            <button
+              onClick={() => setMobileMenuOpen(true)}
+              aria-label="Open navigation menu"
+              className="md:hidden p-2 -ml-1 text-[#111827] hover:text-[#0F5132] hover:bg-[#F4FAF6] rounded-xl transition-all duration-200"
+            >
+              <Menu size={21} />
+            </button>
+
+            <Link href="/admin" className="flex md:hidden items-center gap-2 mr-1">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-xs [background:linear-gradient(135deg,#16A34A,#22C55E)]">
+                SR
+              </div>
+            </Link>
+
+            {/* Search */}
+            <div className="hidden sm:flex flex-1 max-w-md items-center bg-[#F4FAF6] border border-[#E5E7EB] rounded-xl overflow-hidden transition-all duration-200 focus-within:border-[#16A34A] focus-within:ring-2 focus-within:ring-green-100 focus-within:bg-white">
+              <Search size={16} className="ml-3.5 text-[#6B7280] shrink-0" />
+              <input
+                placeholder="Search anything..."
+                className="flex-1 px-2.5 py-2 text-sm outline-none bg-transparent text-[#111827] placeholder:text-[#6B7280]"
+              />
+            </div>
+
+            <div className="flex items-center gap-1.5 sm:gap-2 ml-auto">
+              <Link
+                href="/"
+                target="_blank"
+                className="md:hidden inline-flex items-center gap-1 text-[11px] font-semibold text-[#0F5132] bg-[#F4FAF6] hover:bg-green-100 px-2.5 py-1.5 rounded-xl border border-green-100 transition-all duration-200"
+              >
+                <Store size={13} />
+                <span>Store</span>
+              </Link>
+
+              {/* Real-time order notifications (SSE + 15s polling fallback) */}
+              <OrderNotifications />
+
+              {/* Admin avatar + name */}
+              <div className="flex items-center gap-2.5 pl-1 sm:pl-2 sm:border-l sm:border-[#E5E7EB]">
+                <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-bold [background:linear-gradient(135deg,#16A34A,#22C55E)] shadow-[0_4px_14px_rgba(22,163,74,0.3)]">
+                  A
+                </div>
+                <div className="hidden sm:block leading-tight">
+                  <p className="text-[13px] font-semibold text-[#111827]">Admin</p>
+                  <p className="text-[11px] text-[#6B7280]">Store Manager</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </header>
+
+        {/* Main Content Area */}
+        <main className="flex-1 min-w-0 w-full overflow-x-hidden">
+          <div className="w-full max-w-7xl mx-auto p-3.5 sm:p-5 lg:p-7 sr-page-enter">{children}</div>
+        </main>
+      </div>
     </div>
   )
 }

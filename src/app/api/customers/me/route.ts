@@ -1,21 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, withDbRetry } from '@/lib/db'
 import { extractAuthFromRequest } from '@/lib/auth-util'
+import { apiError, readJsonBody, validate } from '@/lib/api-response'
+import { checkRateLimit } from '@/lib/rate-limit'
+import { customerUpdateSchema } from '@/lib/validators/checkout'
 
 export async function GET(req: NextRequest) {
   try {
     const { uid, email } = extractAuthFromRequest(req)
     if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    let customer = await db.customer.findUnique({ where: { id: uid } })
+    let customer = await withDbRetry(() => db.customer.findUnique({ where: { id: uid } }))
     if (!customer && email) {
-      customer = await db.customer.findUnique({ where: { email: email.toLowerCase().trim() } })
+      const em = email.toLowerCase().trim()
+      customer = await withDbRetry(() => db.customer.findUnique({ where: { email: em } }))
     }
 
     return NextResponse.json({ customer: customer || null })
   } catch (error) {
     console.error('[API/customers/me GET]', error)
-    return NextResponse.json({ error: 'Failed to fetch customer' }, { status: 500 })
+    return NextResponse.json({ error: 'Customer service temporarily unavailable, please retry' }, { status: 503 })
   }
 }
 
@@ -24,8 +28,14 @@ export async function POST(req: NextRequest) {
     const { uid, email: tokenEmail, name: tokenName } = extractAuthFromRequest(req)
     if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const body = await req.json()
-    const { name, email, phone, houseStreet, area, city, state, pincode } = body
+    const limited = await checkRateLimit(req, 'standard', uid)
+    if (limited) return limited
+
+    const raw = await readJsonBody(req)
+    if (!raw.ok) return raw.response
+    const parsed = validate(customerUpdateSchema, raw.body)
+    if (!parsed.ok) return parsed.response
+    const { name, email, phone, houseStreet, area, city, state, pincode } = parsed.data
 
     const targetEmail = (email || tokenEmail || `${uid}@smartretail.com`).toLowerCase().trim()
     const targetName = (name || tokenName || 'Store Customer').trim()
@@ -73,7 +83,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ customer })
   } catch (error) {
     console.error('[API/customers/me POST]', error)
-    return NextResponse.json({ error: 'Failed to save customer' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to save customer' }, { status: 503 })
   }
 }
 
@@ -82,7 +92,15 @@ export async function PATCH(req: NextRequest) {
     const { uid, email } = extractAuthFromRequest(req)
     if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const body = await req.json()
+    const limited = await checkRateLimit(req, 'standard', uid)
+    if (limited) return limited
+
+    const raw = await readJsonBody(req)
+    if (!raw.ok) return raw.response
+    // Whitelist updatable fields — unknown keys (id, role, userId, …) are stripped,
+    // closing the previous mass-assignment hole (`data: body`).
+    const parsed = validate(customerUpdateSchema, raw.body)
+    if (!parsed.ok) return parsed.response
 
     let customer = await db.customer.findUnique({ where: { id: uid } })
     if (!customer && email) {
@@ -95,12 +113,12 @@ export async function PATCH(req: NextRequest) {
 
     const updated = await db.customer.update({
       where: { id: customer.id },
-      data: body,
+      data: parsed.data,
     })
 
     return NextResponse.json({ customer: updated })
   } catch (error) {
     console.error('[API/customers/me PATCH]', error)
-    return NextResponse.json({ error: 'Failed to update customer' }, { status: 500 })
+    return NextResponse.json({ error: 'Failed to update customer' }, { status: 503 })
   }
 }

@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client'
+import bcrypt from 'bcryptjs'
 
 const prisma = new PrismaClient()
 
@@ -41,6 +42,22 @@ async function main() {
     })
   }
   console.log('✅ 3 Core Roles seeded')
+
+  // 1b. Admin user from env ONLY (bcrypt-hashed). Skipped when ADMIN_PASSWORD is missing.
+  const seedAdminEmail = (process.env.ADMIN_EMAIL || '').trim().toLowerCase()
+  const seedAdminPassword = process.env.ADMIN_PASSWORD || ''
+  if (seedAdminEmail && seedAdminPassword) {
+    const adminRole = await prisma.role.findUniqueOrThrow({ where: { name: 'ADMIN' } })
+    const passwordHash = await bcrypt.hash(seedAdminPassword, 12)
+    await prisma.user.upsert({
+      where: { email: seedAdminEmail },
+      update: { passwordHash, roleId: adminRole.id },
+      create: { email: seedAdminEmail, passwordHash, roleId: adminRole.id },
+    })
+    console.log(`✅ Admin user provisioned for ${seedAdminEmail} (bcrypt hash, no plaintext stored)`)
+  } else {
+    console.log('⚠️  ADMIN_PASSWORD not set — no admin user created. Set ADMIN_EMAIL + ADMIN_PASSWORD to provision one.')
+  }
 
   // 2. Categories with GST Rates
   const categories = [

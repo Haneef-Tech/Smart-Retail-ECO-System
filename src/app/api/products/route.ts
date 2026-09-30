@@ -1,15 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getStockStatus, getDiscountPercent } from '@/lib/utils'
+import { guardRoles } from '@/lib/auth-guard'
+import { apiError, readJsonBody, validate, validateQuery } from '@/lib/api-response'
+import { checkRateLimit } from '@/lib/rate-limit'
+import { idParamSchema } from '@/lib/validators/common'
+import { productCreateSchema, productQuerySchema } from '@/lib/validators/products'
 
 export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url)
-    const category = searchParams.get('category')
-    const search = searchParams.get('search')
-    const inStock = searchParams.get('inStock')
-    const featured = searchParams.get('featured')
-    const limit = parseInt(searchParams.get('limit') || '100')
+    const limited = await checkRateLimit(req, 'standard')
+    if (limited) return limited
+
+    const q = validateQuery(productQuerySchema, req)
+    if (!q.ok) return q.response
+    const { category, search, inStock, featured, limit } = q.data
 
     const where: Record<string, unknown> = { isActive: true }
     if (category) {
@@ -78,13 +83,19 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  // Catalog writes require staff — this endpoint was previously unauthenticated.
+  const { denied, requester } = await guardRoles(['ADMIN', 'STAFF'])
+  if (denied) return denied
+  if (!requester) return apiError('Unauthorized: sign-in required', 401)
   try {
-    const body = await req.json()
-    const { id, sku, name, description, categoryId, brand, unit, mrp, sellingPrice, taxRate, imageUrl, supplierId, reorderLevel, safetyStock, leadTimeDays } = body
+    const limited = await checkRateLimit(req, 'standard', requester.uid)
+    if (limited) return limited
 
-    if (!name || !sku || !categoryId || mrp === undefined || sellingPrice === undefined) {
-      return NextResponse.json({ error: 'Missing required product fields' }, { status: 400 })
-    }
+    const raw = await readJsonBody(req)
+    if (!raw.ok) return raw.response
+    const parsed = validate(productCreateSchema, raw.body)
+    if (!parsed.ok) return parsed.response
+    const { id, sku, name, description, categoryId, brand, unit, mrp, sellingPrice, taxRate, imageUrl, supplierId, reorderLevel, safetyStock, leadTimeDays } = parsed.data
 
     const productId = id || sku
 
@@ -97,14 +108,14 @@ export async function POST(req: NextRequest) {
         categoryId,
         brand,
         unit: unit || '1 pc',
-        mrp: parseFloat(mrp),
-        sellingPrice: parseFloat(sellingPrice),
-        taxRate: taxRate !== undefined ? parseFloat(taxRate) : 0,
+        mrp,
+        sellingPrice,
+        taxRate: taxRate ?? 0,
         imageUrl: imageUrl || `/products/${productId}.webp`,
         supplierId,
-        reorderLevel: parseInt(reorderLevel || 10),
-        safetyStock: parseInt(safetyStock || 5),
-        leadTimeDays: parseInt(leadTimeDays || 3),
+        reorderLevel: reorderLevel ?? 10,
+        safetyStock: safetyStock ?? 5,
+        leadTimeDays: leadTimeDays ?? 3,
         inventory: {
           create: {
             availableQuantity: 0,

@@ -22,7 +22,7 @@ async function readJsonResponse<T>(response: Response): Promise<T | null> {
 
 export default function CheckoutPage() {
   const router = useRouter()
-  const { user } = useAuth()
+  const { user, role } = useAuth()
   const items = useCartStore((s) => s.items)
   const clearCart = useCartStore((s) => s.clearCart)
   const [loading, setLoading] = useState(false)
@@ -32,15 +32,22 @@ export default function CheckoutPage() {
   const [form, setForm] = useState({ name: '', phone: '', email: '', houseStreet: '', notes: '' })
 
   useEffect(() => {
-    fetch('/api/gst').then(readJsonResponse<{ rates?: Array<{ category: string; rate: number }> }>).then((d) => {
-      const m: Record<string, number> = {}
-      for (const r of d?.rates || []) m[r.category] = r.rate
-      setGstRates(m)
-    })
+    // GST is display-only: a transient 503/500 must never break checkout.
+    // Totals are recomputed server-side from the DB anyway.
+    fetch('/api/gst', { credentials: 'include' })
+      .then((res) => (res.ok ? readJsonResponse<{ rates?: Array<{ category: string; rate: number }> }>(res) : null))
+      .then((d) => {
+        const m: Record<string, number> = {}
+        for (const r of d?.rates || []) m[r.category] = r.rate
+        setGstRates(m)
+      })
+      .catch(() => {
+        // Silent — checkout works with 0-tax fallback.
+      })
     if (user) {
       setForm((f) => ({ ...f, email: user.email || '' }))
       user.getIdToken().then((token) => {
-        fetch('/api/customers/me', { headers: { Authorization: `Bearer ${token}` } })
+        fetch('/api/customers/me', { headers: { Authorization: `Bearer ${token}` }, credentials: 'include' })
           .then(readJsonResponse<{ customer?: { name?: string; phone?: string; houseStreet?: string; pincode?: string; area?: string; city?: string; state?: string } }>)
           .then((d) => {
             const customer = d?.customer
@@ -76,28 +83,33 @@ export default function CheckoutPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!pincode) { setError('Please select a delivery pincode.'); return }
-    if (!user) { router.push('/auth/login?redirect=/checkout'); return }
+    // Accept either a Firebase user OR a server-session role (password login).
+    if (!user && !role) { router.push('/auth/login?redirect=/checkout'); return }
     if (items.length === 0) { setError('Your cart is empty.'); return }
 
     setLoading(true)
     setError('')
     try {
-      const token = await user.getIdToken()
+      const token = user ? await user.getIdToken() : null
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+      if (token) headers.Authorization = `Bearer ${token}`
       const deliveryAddress = `${form.houseStreet}, ${pincode.area}, ${pincode.city}, ${pincode.state} - ${pincode.pincode}`
       const res = await fetch('/api/orders', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers,
+        credentials: 'include', // send sr-session cookie for password-login users
         body: JSON.stringify({
           items,
           deliveryAddress,
           notes: form.notes,
-          customerId: user.uid,
+          customerId: user?.uid,
           customerName: form.name,
           customerPhone: form.phone,
           customerEmail: form.email,
         }),
       })
       const data = await readJsonResponse<{ error?: string; orderId?: string; billNumber?: string }>(res)
+      if (res.status === 503) throw new Error('Store is waking up — please click Place Order once more in a few seconds.')
       if (!res.ok) throw new Error(data?.error || 'Order failed')
       if (!data?.orderId || !data.billNumber) throw new Error('Order response was incomplete. Please try again.')
       clearCart()

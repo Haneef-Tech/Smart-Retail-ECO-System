@@ -1,57 +1,42 @@
 import { PrismaClient } from '@prisma/client'
-import path from 'path'
-import fs from 'fs'
-import os from 'os'
 
-function getDatabaseUrl(): string {
-  // If user provided a remote database connection (e.g. Postgres, Supabase, Neon)
-  if (process.env.DATABASE_URL && !process.env.DATABASE_URL.startsWith('file:')) {
-    return process.env.DATABASE_URL
-  }
+// Serverless-safe singleton: one PrismaClient per server instance, cached on
+// globalThis so Next.js dev hot-reloads and Vercel function reuse never
+// exhaust the Postgres (Neon/Supabase pooled) connection limit.
+const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient }
 
-  const sourceDbPath = path.resolve(process.cwd(), 'prisma', 'dev.db')
+export const db = globalForPrisma.prisma ?? new PrismaClient({ log: ['error'] })
 
-  // Detect serverless environment (Vercel, AWS Lambda)
-  const isServerless =
-    Boolean(process.env.VERCEL) ||
-    Boolean(process.env.AWS_LAMBDA_FUNCTION_VERSION) ||
-    Boolean(process.env.LAMBDA_TASK_ROOT)
+globalForPrisma.prisma = db
 
-  if (isServerless) {
-    const tmpDir = process.env.VERCEL ? '/tmp' : os.tmpdir()
-    const tmpDbPath = path.join(tmpDir, 'dev.db')
-    try {
-      if (!fs.existsSync(tmpDir)) {
-        fs.mkdirSync(tmpDir, { recursive: true })
-      }
-      if (!fs.existsSync(tmpDbPath)) {
-        if (fs.existsSync(sourceDbPath)) {
-          fs.copyFileSync(sourceDbPath, tmpDbPath)
-        }
-      }
-      return `file:${tmpDbPath}`
-    } catch (err) {
-      console.error('[lib/db] Error copying SQLite DB to /tmp:', err)
-    }
-  }
+export default db
 
-  return `file:${sourceDbPath}`
+function isTransientDbError(error: unknown): boolean {
+  // Prisma P1001 = "Can't reach database server" — Neon cold-start wakeup.
+  // P1002/P1008/P1017 are also connection/timeout class errors worth one retry.
+  const code = (error as { code?: string })?.code
+  if (code === 'P1001' || code === 'P1002' || code === 'P1008' || code === 'P1017') return true
+  const msg = error instanceof Error ? error.message : String(error)
+  return (
+    msg.includes("Can't reach database server") ||
+    msg.includes('Connection terminated') ||
+    msg.includes('timed out fetching a new connection')
+  )
 }
 
-const resolvedDbUrl = getDatabaseUrl()
-process.env.DATABASE_URL = resolvedDbUrl
-
-const globalForPrisma = global as unknown as { prisma: PrismaClient }
-
-export const db =
-  globalForPrisma.prisma ||
-  new PrismaClient({
-    datasources: {
-      db: {
-        url: resolvedDbUrl,
-      },
-    },
-    log: ['error'],
-  })
-
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = db
+/**
+ * Run a DB query with one retry after a short pause.
+ * Neon free-tier computes sleep when idle; the first query wakes it but
+ * Prisma times out (P1001). Retrying once absorbs the wakeup so callers
+ * don't see a spurious 500.
+ */
+export async function withDbRetry<T>(fn: () => Promise<T>, delayMs = 2500): Promise<T> {
+  try {
+    return await fn()
+  } catch (error) {
+    if (!isTransientDbError(error)) throw error
+    console.warn('[db] transient connection failure, retrying once after wakeup pause…')
+    await new Promise((r) => setTimeout(r, delayMs))
+    return fn()
+  }
+}

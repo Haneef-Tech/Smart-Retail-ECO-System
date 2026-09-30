@@ -1,8 +1,14 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { guardRoles } from '@/lib/auth-guard'
+import { checkRateLimit } from '@/lib/rate-limit'
 import { runEtlPipeline } from '@/lib/etl'
 
 export async function GET() {
+  const { denied } = await guardRoles(['ADMIN', 'STAFF'])
+  if (denied) return denied
+  const limited = await checkRateLimit(null, 'standard')
+  if (limited) return limited
   try {
     // Ensure performance & coverage table is populated
     const perfCount = await db.productPerformance.count()

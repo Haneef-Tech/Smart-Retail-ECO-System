@@ -42,9 +42,9 @@ export default function AdminOrdersPage() {
   const fetchOrders = async () => {
     setLoading(true)
     try {
-      const res = await fetch('/api/orders?admin=true', {
-        headers: { Authorization: 'Bearer admin-uid' },
-      })
+      // Auth travels via the HttpOnly session cookie (same-origin fetch sends it
+      // automatically). The server decides admin visibility from the verified role.
+      const res = await fetch('/api/orders', { cache: 'no-store' })
       const data = await res.json()
       if (data.orders) setOrders(data.orders)
     } catch (err) {

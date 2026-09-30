@@ -2,11 +2,12 @@
 
 import Image from 'next/image'
 import Link from 'next/link'
-import { ShoppingCart, Plus, Minus } from 'lucide-react'
+import { Plus, Minus } from 'lucide-react'
 import { useCartStore } from '@/store/cart'
 import type { Product } from '@/types'
 import { formatPrice } from '@/lib/utils'
 import StockBadge from '@/components/ui/StockBadge'
+import { toast } from '@/components/ui/fresh'
 
 interface Props {
   product: Product
@@ -32,78 +33,83 @@ export default function ProductCard({ product }: Props) {
       unit: product.unit,
       category: product.category,
     })
+    toast(`${product.name} added to cart`)
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col overflow-hidden group">
-      {/* Image */}
-      <Link href={`/products/${product.id}`} className="relative block bg-gray-50 pt-[100%] overflow-hidden">
+    <div className="sr-card sr-card-hover flex flex-col overflow-hidden group">
+      {/* Image on light background */}
+      <Link href={`/products/${product.id}`} className="relative block bg-[#F4FAF6] pt-[100%] overflow-hidden">
         <Image
           src={product.imageUrl}
           alt={product.name}
           fill
           loading="eager"
           unoptimized
-          className="object-contain p-3 group-hover:scale-105 transition-transform duration-300"
-          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+          className="object-contain p-4 transition-transform duration-300 group-hover:scale-105"
+          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
         />
         {product.discountPercent > 0 && (
-          <span className="absolute top-2 left-2 bg-red-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+          <span className="absolute top-2.5 left-2.5 bg-[#EF4444] text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow">
             -{product.discountPercent}%
           </span>
         )}
       </Link>
 
       {/* Info */}
-      <div className="flex flex-col flex-1 p-3 gap-1">
-        <p className="text-[10px] text-gray-400 uppercase tracking-wider font-medium">{product.category}</p>
+      <div className="flex flex-col flex-1 p-3.5 gap-0.5">
         <Link href={`/products/${product.id}`}>
-          <h3 className="text-sm font-semibold text-gray-800 line-clamp-2 hover:text-green-700 leading-snug">{product.name}</h3>
+          <h3 className="text-sm font-medium text-[#111827] line-clamp-2 hover:text-[#15803D] leading-snug transition-colors duration-200 min-h-[2.5rem]">
+            {product.name}
+          </h3>
         </Link>
-        <p className="text-[11px] text-gray-400">{product.unit}</p>
+        <p className="text-xs text-[#6B7280]">{product.unit}</p>
 
-        {/* Price */}
-        <div className="flex items-baseline gap-2 mt-1">
-          <span className="font-bold text-gray-900 text-base">{formatPrice(product.sellingPrice)}</span>
-          {product.discountPercent > 0 && (
-            <span className="text-xs text-gray-400 line-through">{formatPrice(product.mrp)}</span>
+        {/* Price + Add */}
+        <div className="flex items-end justify-between gap-2 mt-2">
+          <div className="flex flex-col">
+            <span className="font-bold text-[#111827] text-[15px] leading-tight">{formatPrice(product.sellingPrice)}</span>
+            {product.discountPercent > 0 && (
+              <span className="text-[11px] text-[#6B7280] line-through leading-tight">{formatPrice(product.mrp)}</span>
+            )}
+          </div>
+
+          {isOut ? (
+            <span className="px-3 py-1.5 rounded-xl bg-gray-100 text-gray-400 text-xs font-semibold cursor-not-allowed">
+              Out of Stock
+            </span>
+          ) : qty === 0 ? (
+            <button
+              onClick={handleAdd}
+              className="sr-btn-primary px-4 py-1.5 text-[13px] font-semibold flex items-center gap-1"
+            >
+              <Plus size={14} strokeWidth={3} />
+              Add
+            </button>
+          ) : (
+            <div className="flex items-center gap-1 rounded-xl p-1 [background:linear-gradient(135deg,#16A34A,#22C55E)] shadow-[0_4px_14px_rgba(22,163,74,0.28)]">
+              <button
+                onClick={() => decreaseQty(product.id)}
+                aria-label="Decrease quantity"
+                className="w-6 h-6 rounded-lg bg-white/20 hover:bg-white/35 text-white flex items-center justify-center transition-all duration-200 active:scale-95"
+              >
+                <Minus size={13} strokeWidth={3} />
+              </button>
+              <span className="text-white font-bold text-[13px] min-w-5 text-center">{qty}</span>
+              <button
+                onClick={() => increaseQty(product.id)}
+                aria-label="Increase quantity"
+                className="w-6 h-6 rounded-lg bg-white/20 hover:bg-white/35 text-white flex items-center justify-center transition-all duration-200 active:scale-95"
+              >
+                <Plus size={13} strokeWidth={3} />
+              </button>
+            </div>
           )}
         </div>
 
         {/* Stock */}
-        <StockBadge status={product.stockStatus} />
-
-        {/* Cart Action */}
-        <div className="mt-auto pt-2">
-          {isOut ? (
-            <button disabled className="w-full py-2 rounded-xl bg-gray-100 text-gray-400 text-sm font-medium cursor-not-allowed">
-              Out of Stock
-            </button>
-          ) : qty === 0 ? (
-            <button
-              onClick={handleAdd}
-              className="w-full py-2 rounded-xl bg-green-600 hover:bg-green-700 text-white text-sm font-semibold flex items-center justify-center gap-1.5 transition-colors active:scale-95"
-            >
-              <ShoppingCart size={15} />
-              Add to Cart
-            </button>
-          ) : (
-            <div className="flex items-center justify-between bg-green-600 rounded-xl px-2 py-1.5">
-              <button
-                onClick={() => decreaseQty(product.id)}
-                className="w-7 h-7 rounded-lg bg-white/20 hover:bg-white/30 text-white flex items-center justify-center transition-colors"
-              >
-                <Minus size={14} />
-              </button>
-              <span className="text-white font-bold text-sm">{qty}</span>
-              <button
-                onClick={() => increaseQty(product.id)}
-                className="w-7 h-7 rounded-lg bg-white/20 hover:bg-white/30 text-white flex items-center justify-center transition-colors"
-              >
-                <Plus size={14} />
-              </button>
-            </div>
-          )}
+        <div className="mt-2">
+          <StockBadge status={product.stockStatus} />
         </div>
       </div>
     </div>

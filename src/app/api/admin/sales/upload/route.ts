@@ -1,7 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { guardRoles } from '@/lib/auth-guard'
+import { apiError, readJsonBody, validate } from '@/lib/api-response'
+import { checkRateLimit } from '@/lib/rate-limit'
+import { MAX_SALES_ROWS, salesRowSchema, salesUploadSchema } from '@/lib/validators/csv'
+import { logger } from '@/lib/logger'
 
 export async function GET() {
+  const { denied } = await guardRoles(['ADMIN', 'STAFF'])
+  if (denied) return denied
   try {
     const records = await db.storeSaleRecord.findMany({
       orderBy: { date: 'desc' },
@@ -47,15 +54,27 @@ export async function GET() {
       ragDocsCount,
     })
   } catch (error) {
-    console.error('[API/admin/sales/upload GET]', error)
+    logger.error('sales-upload', 'fetch sales records failed', {
+      reason: error instanceof Error ? error.message : String(error),
+    })
     return NextResponse.json({ error: 'Failed to fetch sales records' }, { status: 500 })
   }
 }
 
 export async function POST(req: NextRequest) {
+  const { denied, requester } = await guardRoles(['ADMIN', 'STAFF'])
+  if (denied) return denied
+  if (!requester) return apiError('Unauthorized: sign-in required', 401)
   try {
-    const body = await req.json()
-    const { rawCsv, records: incomingRecords } = body
+    // 5 uploads/hour per user; payload capped at 5 MB / 5000 rows
+    const limited = await checkRateLimit(req, 'csvUpload', requester.uid)
+    if (limited) return limited
+
+    const raw = await readJsonBody(req)
+    if (!raw.ok) return raw.response
+    const parsed = validate(salesUploadSchema, raw.body)
+    if (!parsed.ok) return parsed.response
+    const { rawCsv, records: incomingRecords } = parsed.data
 
     let rowsToInsert: Array<{
       date: string
@@ -69,19 +88,24 @@ export async function POST(req: NextRequest) {
     }> = []
 
     if (Array.isArray(incomingRecords) && incomingRecords.length > 0) {
-      rowsToInsert = incomingRecords.map((r) => {
-        const qty = parseInt(r.quantity || r.qty || '1') || 1
-        const price = parseFloat(r.unitPrice || r.sellingPrice || r.price || '0') || 0
-        const revenue = parseFloat(r.totalRevenue || r.revenue || '0') || qty * price
+      const today = new Date().toISOString().slice(0, 10)
+      rowsToInsert = (incomingRecords as Record<string, unknown>[]).map((r) => {
+        const rec = ((r ?? {}) as Record<string, unknown>)
+        const qty = parseInt(String(rec.quantity ?? rec.qty ?? '1')) || 1
+        const price = parseFloat(String(rec.unitPrice ?? rec.sellingPrice ?? rec.price ?? '0')) || 0
+        const revRaw = rec.totalRevenue ?? rec.revenue
+        const revenue =
+          revRaw === undefined || revRaw === '' ? qty * price : parseFloat(String(revRaw)) || qty * price
+        const rawDate = String(rec.date ?? today)
         return {
-          date: String(r.date || new Date().toISOString().slice(0, 10)),
-          sku: String(r.sku || ''),
-          productName: String(r.productName || r.name || 'Store Item').trim(),
-          category: String(r.category || 'General').trim(),
+          date: /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : today,
+          sku: String(rec.sku ?? '').slice(0, 30),
+          productName: String(rec.productName ?? rec.name ?? 'Store Item').trim(),
+          category: String(rec.category ?? 'General').trim(),
           quantity: qty,
           unitPrice: price,
           totalRevenue: revenue,
-          paymentMode: String(r.paymentMode || r.payment || 'UPI').trim(),
+          paymentMode: String(rec.paymentMode ?? rec.payment ?? 'UPI').trim(),
         }
       })
     } else if (rawCsv && typeof rawCsv === 'string') {
@@ -109,7 +133,8 @@ export async function POST(req: NextRequest) {
         const qty = qtyIdx !== -1 && !isNaN(parseInt(cols[qtyIdx])) ? parseInt(cols[qtyIdx]) : 1
         const price = priceIdx !== -1 && !isNaN(parseFloat(cols[priceIdx])) ? parseFloat(cols[priceIdx]) : 100
         const revenue = revIdx !== -1 && !isNaN(parseFloat(cols[revIdx])) ? parseFloat(cols[revIdx]) : qty * price
-        const date = dateIdx !== -1 && cols[dateIdx] ? cols[dateIdx] : new Date().toISOString().slice(0, 10)
+        const rawDate = dateIdx !== -1 && cols[dateIdx] ? cols[dateIdx] : new Date().toISOString().slice(0, 10)
+        const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : new Date().toISOString().slice(0, 10)
         const sku = skuIdx !== -1 && cols[skuIdx] ? cols[skuIdx] : ''
         const category = catIdx !== -1 && cols[catIdx] ? cols[catIdx] : 'General'
         const paymentMode = payIdx !== -1 && cols[payIdx] ? cols[payIdx] : 'UPI'
@@ -126,6 +151,31 @@ export async function POST(req: NextRequest) {
         })
       }
     }
+
+    // Per-row validation (fail closed: nothing is imported when any row is invalid)
+    const rowErrors: Array<{ path: string; message: string }> = []
+    const cleanRows: typeof rowsToInsert = []
+    rowsToInsert.forEach((row, idx) => {
+      const checked = salesRowSchema.safeParse(row)
+      if (!checked.success) {
+        rowErrors.push({
+          path: `row ${idx + 1}`,
+          message: checked.error.issues
+            .map((i) => `${i.path.join('.') || 'row'}: ${i.message}`)
+            .join('; '),
+        })
+        return
+      }
+      cleanRows.push(checked.data)
+    })
+    if (rowErrors.length > 0) {
+      return apiError(
+        `Rejected ${rowErrors.length} invalid row(s); nothing was imported`,
+        400,
+        rowErrors.slice(0, 50)
+      )
+    }
+    rowsToInsert = cleanRows
 
     if (rowsToInsert.length === 0) {
       return NextResponse.json({ error: 'No valid sales records parsed from input' }, { status: 400 })
@@ -230,6 +280,15 @@ export async function POST(req: NextRequest) {
       })
     }
 
+    // Log counts only — never row contents or the raw CSV payload.
+    logger.info('sales-upload', 'upload processed', {
+      insertedCount: rowsToInsert.length,
+      totalStoreSalesCount: allSales.length,
+      totalRevenue,
+      totalUnits,
+      ragTrainedDocs: ragDocs.length,
+    })
+
     return NextResponse.json({
       success: true,
       insertedCount: rowsToInsert.length,
@@ -240,7 +299,9 @@ export async function POST(req: NextRequest) {
       message: `Successfully uploaded ${rowsToInsert.length} sales records! RAG system trained with ${ragDocs.length} knowledge documents.`,
     })
   } catch (error) {
-    console.error('[API/admin/sales/upload POST]', error)
+    logger.error('sales-upload', 'upload failed', {
+      reason: error instanceof Error ? error.message : String(error),
+    })
     return NextResponse.json(
       { error: 'Failed to upload and train sales: ' + (error instanceof Error ? error.message : String(error)) },
       { status: 500 }
@@ -249,6 +310,12 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE() {
+  const { denied, requester } = await guardRoles(['ADMIN', 'STAFF'])
+  if (denied) return denied
+  if (!requester) return apiError('Unauthorized: sign-in required', 401)
+  // Destructive bulk delete: 10/min per user
+  const limited = await checkRateLimit(null, 'heavy', requester.uid)
+  if (limited) return limited
   try {
     const delCount = await db.storeSaleRecord.deleteMany()
     await db.knowledgeDocument.deleteMany({ where: { category: 'STORE_SALES' } })
@@ -259,7 +326,9 @@ export async function DELETE() {
       message: 'All uploaded store sales data and associated RAG knowledge documents cleared.',
     })
   } catch (error) {
-    console.error('[API/admin/sales/upload DELETE]', error)
+    logger.error('sales-upload', 'clear sales records failed', {
+      reason: error instanceof Error ? error.message : String(error),
+    })
     return NextResponse.json({ error: 'Failed to clear sales records' }, { status: 500 })
   }
 }

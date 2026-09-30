@@ -9,7 +9,7 @@ import { useAuth } from '@/context/AuthContext'
 export default function LoginPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { login } = useAuth()
+  const { login, isAdmin } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPwd, setShowPwd] = useState(false)
@@ -24,9 +24,20 @@ export default function LoginPage() {
     setLoading(true)
     try {
       await login(email, password)
-      if (email.trim() === 'aluruhaneef1@gmail.com') {
+      if (isAdmin) {
         router.push('/admin')
       } else {
+        // Role resolves async after login; re-check server session for admin/staff.
+        try {
+          const res = await fetch('/api/auth/me', { cache: 'no-store', credentials: 'include' })
+          const data = res.ok ? await res.json() : null
+          if (data?.role === 'ADMIN' || data?.role === 'STAFF') {
+            router.push('/admin')
+            return
+          }
+        } catch {
+          // Fall through to customer redirect
+        }
         router.push(redirect || '/')
       }
     } catch (err: unknown) {

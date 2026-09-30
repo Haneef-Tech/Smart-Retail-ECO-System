@@ -17,11 +17,12 @@ export default function ProductGrid({ products, emptyMessage = 'No products foun
   }
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 sm:gap-4">
-      {products.map((product) => (
-        <ProductCard key={product.id} product={product} />
+    <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3 sm:gap-4">
+      {products.map((product, i) => (
+        <div key={product.id} className="sr-stagger" style={{ animationDelay: `${Math.min(i, 9) * 50}ms` }}>
+          <ProductCard product={product} />
+        </div>
       ))}
     </div>
   )
 }
-

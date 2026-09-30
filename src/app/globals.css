@@ -5,6 +5,24 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  /* SmartRetail "green retail" design tokens */
+  --sr-primary: #16a34a;
+  --sr-primary-hover: #15803d;
+  --sr-heading: #0f5132;
+  --sr-page-from: #ecfdf3;
+  --sr-page-to: #ffffff;
+  --sr-card: #ffffff;
+  --sr-text: #111827;
+  --sr-muted: #6b7280;
+  --sr-border: #e5e7eb;
+  --sr-accent-blue: #3b82f6;
+  --sr-accent-purple: #8b5cf6;
+  --sr-accent-orange: #f59e0b;
+  --sr-accent-red: #ef4444;
+  --sr-accent-pink: #ec4899;
+  --sr-card-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+  --sr-card-shadow-hover: 0 12px 32px rgba(22, 163, 74, 0.12);
+
   --green-primary: #16a34a;
   --green-dark: #15803d;
   --green-light: #dcfce7;
@@ -48,8 +66,10 @@
 }
 
 body {
-  background-color: #f8fafc;
-  color: #1e293b;
+  color: var(--sr-text);
+  background: linear-gradient(180deg, var(--sr-page-from) 0%, var(--sr-page-to) 480px);
+  background-color: #f4faf6;
+  background-attachment: fixed;
 }
 
 /* Smooth scrolling */
@@ -59,15 +79,18 @@ html {
 
 /* Custom scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: #ecfdf3;
 }
 ::-webkit-scrollbar-thumb {
-  background: #94a3b8;
-  border-radius: 3px;
+  background: #bbf7d0;
+  border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #86efac;
 }
 
 /* Line clamp utilities */
@@ -88,6 +111,126 @@ html {
 *:focus-visible {
   outline: 2px solid #16a34a;
   outline-offset: 2px;
+}
+
+/* ---------- SmartRetail motion system (smooth, subtle) ---------- */
+
+@keyframes sr-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes sr-shimmer {
+  0% {
+    background-position: -400px 0;
+  }
+  100% {
+    background-position: 400px 0;
+  }
+}
+
+@keyframes sr-toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Page / route load: fade-in + slide-up 300ms */
+.sr-page-enter {
+  animation: sr-fade-up 300ms ease both;
+}
+
+/* Staggered card entrances (set style={{ animationDelay: `${i * 50}ms` }}) */
+.sr-stagger {
+  opacity: 0;
+  animation: sr-fade-up 300ms ease forwards;
+}
+
+/* Cards: hover lift + stronger shadow */
+.sr-card {
+  background: var(--sr-card);
+  border: 1px solid var(--sr-border);
+  border-radius: 16px;
+  box-shadow: var(--sr-card-shadow);
+  transition: transform 250ms ease, box-shadow 250ms ease, border-color 250ms ease;
+}
+.sr-card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--sr-card-shadow-hover);
+  border-color: #bbf7d0;
+}
+
+/* Buttons: gradient primary, hover brighten, active scale 0.97 */
+.sr-btn-primary {
+  background: linear-gradient(135deg, #16a34a, #22c55e);
+  color: #fff;
+  border-radius: 12px;
+  transition: filter 200ms ease, transform 200ms ease, box-shadow 200ms ease;
+  box-shadow: 0 4px 14px rgba(22, 163, 74, 0.28);
+}
+.sr-btn-primary:hover {
+  filter: brightness(1.07);
+  box-shadow: 0 6px 20px rgba(22, 163, 74, 0.36);
+}
+.sr-btn-primary:active {
+  transform: scale(0.97);
+}
+
+.sr-interactive {
+  transition: all 200ms ease;
+}
+.sr-interactive:active {
+  transform: scale(0.97);
+}
+
+/* Hero banner gradient */
+.sr-hero-gradient {
+  background: linear-gradient(135deg, #dcfce7, #f0fdf4);
+}
+
+/* Active sidebar pill */
+.sr-nav-active {
+  background: #16a34a;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(22, 163, 74, 0.3);
+}
+.sr-nav-active svg {
+  color: #fff;
+}
+
+/* Skeleton shimmer placeholder */
+.sr-skeleton {
+  border-radius: 12px;
+  background: linear-gradient(90deg, #eef2f0 25%, #f7faf8 50%, #eef2f0 75%);
+  background-size: 800px 100%;
+  animation: sr-shimmer 1.4s ease infinite;
+}
+
+/* Toast slide-in from top right */
+.sr-toast-in {
+  animation: sr-toast-in 250ms ease both;
+}
+
+/* Small colored icon tile */
+.sr-icon-tile {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 12px;
+  flex-shrink: 0;
 }
 
 @theme inline {

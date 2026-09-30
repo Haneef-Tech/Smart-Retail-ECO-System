@@ -1,13 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { extractAuthFromRequest } from '@/lib/auth-util'
+import { guardRoles, isPrivilegedRequest } from '@/lib/auth-guard'
+import { apiError, readJsonBody, validate } from '@/lib/api-response'
+import { orderIdParamSchema } from '@/lib/validators/common'
+import { orderStatusSchema } from '@/lib/validators/orders'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { uid, email } = extractAuthFromRequest(req)
     if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const { id } = await params
+    const { id: rawId } = await params
+    const idCheck = validate(orderIdParamSchema, { orderId: rawId })
+    if (!idCheck.ok) return idCheck.response
+    const { orderId: id } = idCheck.data
     const order = await db.order.findUnique({
       where: { id },
       include: {
@@ -19,10 +26,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
     if (!order) return NextResponse.json({ error: 'Order not found' }, { status: 404 })
 
-    const isUserAdmin =
-      email === 'aluruhaneef1@gmail.com' ||
-      uid === 'admin-uid' ||
-      uid === 'admin-uid-haneef123'
+    // Admin access requires a verified ADMIN/STAFF session — never a uid/email string match.
+    const isUserAdmin = await isPrivilegedRequest()
 
     if (!isUserAdmin) {
       const isOwner =
@@ -42,14 +47,21 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  // Order status changes are a privileged admin operation.
+  const { denied, requester } = await guardRoles(['ADMIN', 'STAFF'])
+  if (denied) return denied
+  if (!requester) return NextResponse.json({ error: 'Unauthorized: sign-in required' }, { status: 401 })
   try {
-    const { id } = await params
-    const body = await req.json()
-    const { status } = body
+    const { id: rawId } = await params
+    const idCheck = validate(orderIdParamSchema, { orderId: rawId })
+    if (!idCheck.ok) return idCheck.response
+    const { orderId: id } = idCheck.data
 
-    if (!status || !['PENDING', 'CONFIRMED', 'DELIVERED', 'CANCELLED'].includes(status)) {
-      return NextResponse.json({ error: 'Valid status required' }, { status: 400 })
-    }
+    const raw = await readJsonBody(req)
+    if (!raw.ok) return raw.response
+    const statusCheck = validate(orderStatusSchema, raw.body)
+    if (!statusCheck.ok) return statusCheck.response
+    const { status } = statusCheck.data
 
     const order = await db.order.findUnique({
       where: { id },
@@ -95,10 +107,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       try {
         await tx.auditLog.create({
           data: {
+            userId: requester.uid,
+            userEmail: requester.email,
             action: 'UPDATE_STATUS',
             entity: 'ORDER',
             entityId: order.id,
-            details: `Order #${order.id.slice(0, 8)} status updated to ${status}`,
+            details: `Order #${order.id.slice(0, 8)} status updated to ${status} by ${requester.email}`,
           },
         })
       } catch (auditErr) {

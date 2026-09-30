@@ -26,24 +26,25 @@ export interface DemandForecastResult {
 }
 
 // 1. Statistical Baselines Implementation
-function forecastNaive(salesHistory: number[]): number {
+// NOTE: exported for unit testing only — runtime behavior is unchanged.
+export function forecastNaive(salesHistory: number[]): number {
   if (salesHistory.length === 0) return 0
   return salesHistory[salesHistory.length - 1]
 }
 
-function forecastMovingAverage(salesHistory: number[], window = 7): number {
+export function forecastMovingAverage(salesHistory: number[], window = 7): number {
   if (salesHistory.length === 0) return 0
   const slice = salesHistory.slice(-window)
   const sum = slice.reduce((a, b) => a + b, 0)
   return sum / slice.length
 }
 
-function forecastSeasonalNaive(salesHistory: number[], liftFactor = 1.35): number {
+export function forecastSeasonalNaive(salesHistory: number[], liftFactor = 1.35): number {
   const ma = forecastMovingAverage(salesHistory, 14)
   return ma * liftFactor
 }
 
-function forecastExponentialSmoothing(salesHistory: number[], alpha = 0.3): number {
+export function forecastExponentialSmoothing(salesHistory: number[], alpha = 0.3): number {
   if (salesHistory.length === 0) return 0
   let s = salesHistory[0]
   for (let i = 1; i < salesHistory.length; i++) {
@@ -53,7 +54,8 @@ function forecastExponentialSmoothing(salesHistory: number[], alpha = 0.3): numb
 }
 
 // Evaluate Model Performance (MAE, RMSE, MAPE)
-function evaluateModel(
+// NOTE: exported for unit testing only — runtime behavior is unchanged.
+export function evaluateModel(
   salesHistory: number[],
   forecastFn: (history: number[]) => number
 ): ModelMetrics {
@@ -90,6 +92,17 @@ function evaluateModel(
     rmse: Math.round(rmse * 100) / 100,
     mape: Math.round(mape * 100) / 100,
   }
+}
+
+export interface ModelCandidate {
+  name: 'Naive' | 'Moving Average' | 'Seasonal Naive' | 'Exponential Smoothing'
+  fn: () => number
+  metrics: ModelMetrics
+}
+
+// NOTE: exported for unit testing only — same lowest-MAE selection used inline before.
+export function selectBestModel(models: ModelCandidate[]): ModelCandidate {
+  return [...models].sort((a, b) => a.metrics.mae - b.metrics.mae)[0]
 }
 
 export async function generateDemandForecasts(): Promise<DemandForecastResult[]> {
@@ -130,15 +143,12 @@ export async function generateDemandForecasts(): Promise<DemandForecastResult[]>
     const mExp = evaluateModel(salesHistory, (h) => forecastExponentialSmoothing(h, 0.3))
 
     // Select model with lowest MAE
-    const models = [
+    const bestModel = selectBestModel([
       { name: 'Naive' as const, fn: () => forecastNaive(salesHistory), metrics: mNaive },
       { name: 'Moving Average' as const, fn: () => forecastMovingAverage(salesHistory, 7), metrics: mMA },
       { name: 'Seasonal Naive' as const, fn: () => forecastSeasonalNaive(salesHistory, seasonalLiftFactor), metrics: mSeasonal },
       { name: 'Exponential Smoothing' as const, fn: () => forecastExponentialSmoothing(salesHistory, 0.3), metrics: mExp },
-    ]
-
-    models.sort((a, b) => a.metrics.mae - b.metrics.mae)
-    const bestModel = models[0]
+    ])
 
     const dailyForecast = bestModel.fn()
     const monthlyForecastRaw = dailyForecast * 30.0

@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { guardRoles } from '@/lib/auth-guard'
+import { apiError, readJsonBody, validate } from '@/lib/api-response'
+import { checkRateLimit } from '@/lib/rate-limit'
+import { MAX_CSV_BYTES, MAX_CSV_ROWS, incomingCsvJsonSchema } from '@/lib/validators/csv'
 import Papa from 'papaparse'
 
 interface CSVRow {
@@ -29,17 +33,36 @@ interface ValidatedRow {
 }
 
 export async function POST(req: NextRequest) {
+  const { denied, requester } = await guardRoles(['ADMIN', 'STAFF'])
+  if (denied) return denied
+  if (!requester) return apiError('Unauthorized: sign-in required', 401)
   try {
+    // 5 uploads/hour per user; file read capped at 5 MB
+    const limited = await checkRateLimit(req, 'csvUpload', requester.uid)
+    if (limited) return limited
+
     const contentType = req.headers.get('content-type') || ''
     let csvText = ''
     let commitBatch = false
 
     if (contentType.includes('application/json')) {
-      const body = await req.json()
-      csvText = body.csvText
-      commitBatch = body.action === 'commit'
+      const raw = await readJsonBody(req)
+      if (!raw.ok) return raw.response
+      const parsed = validate(incomingCsvJsonSchema, raw.body)
+      if (!parsed.ok) return parsed.response
+      csvText = parsed.data.csvText
+      commitBatch = parsed.data.action === 'commit'
     } else {
+      // Raw text posts: .csv only
+      const typeOk = contentType.includes('text/csv') || contentType.includes('text/plain') || contentType === ''
+      if (!typeOk) {
+        return apiError('Unsupported content type: send text/csv or JSON with csvText', 400)
+      }
       csvText = await req.text()
+    }
+
+    if (csvText.length > MAX_CSV_BYTES) {
+      return apiError('CSV exceeds the 5 MB limit', 400)
     }
 
     if (!csvText || !csvText.trim()) {
@@ -58,6 +81,9 @@ export async function POST(req: NextRequest) {
     }
 
     const rows = parsed.data
+    if (rows.length > MAX_CSV_ROWS) {
+      return apiError(`Too many rows: max ${MAX_CSV_ROWS} per batch`, 400)
+    }
 
     // 2. Pre-fetch DB products & suppliers for business rule validation
     const products = await db.product.findMany({ select: { id: true, sku: true, name: true } })

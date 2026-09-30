@@ -1,7 +1,9 @@
 import { db } from '@/lib/db'
 import { formatDate } from '@/lib/utils'
+import { requirePageRole } from '@/lib/auth-guard'
 
 export default async function AdminCustomersPage() {
+  await requirePageRole(['ADMIN', 'STAFF'])
   const customers = await db.customer.findMany({ orderBy: { createdAt: 'desc' } })
   return (
     <div className="p-6">

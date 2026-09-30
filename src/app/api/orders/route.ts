@@ -1,56 +1,56 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, withDbRetry } from '@/lib/db'
 import { generateBillNumber } from '@/lib/utils'
 import { extractAuthFromRequest } from '@/lib/auth-util'
+import { isPrivilegedRequest, resolveRequester } from '@/lib/auth-guard'
+import { apiError, readJsonBody, validate } from '@/lib/api-response'
+import { checkRateLimit } from '@/lib/rate-limit'
+import { orderCreateSchema } from '@/lib/validators/orders'
+import { logger } from '@/lib/logger'
+import { publishOrderEvent } from '@/lib/order-events'
 import type { CartItem } from '@/types'
 
 export async function GET(req: NextRequest) {
   try {
+    const limited = await checkRateLimit(req, 'standard')
+    if (limited) return limited
     const { uid, email } = extractAuthFromRequest(req)
-    const url = new URL(req.url)
-    const isAdminParam = url.searchParams.get('admin') === 'true' || url.searchParams.get('all') === 'true'
 
-    // Check if user is admin
-    let isUserAdmin =
-      isAdminParam ||
-      uid === 'admin-uid' ||
-      uid === 'admin-uid-haneef123' ||
-      email === 'aluruhaneef1@gmail.com'
-
-    if (uid && !isUserAdmin) {
-      const customer = await db.customer.findFirst({
-        where: {
-          OR: [{ id: uid }, ...(email ? [{ email }] : [])],
-        },
-      })
-      isUserAdmin = customer?.email === 'aluruhaneef1@gmail.com'
-    }
+    // Admin visibility requires a verified ADMIN/STAFF session — never a
+    // query param, bare uid, or email string match.
+    const isUserAdmin = await isPrivilegedRequest()
 
     // Determine customer filter
     let customerFilter: string | undefined = undefined
     if (!isUserAdmin && uid) {
-      const cust = await db.customer.findFirst({
-        where: {
-          OR: [{ id: uid }, ...(email ? [{ email }] : [])],
-        },
-      })
+      const cust = await withDbRetry(() =>
+        db.customer.findFirst({
+          where: {
+            OR: [{ id: uid }, ...(email ? [{ email }] : [])],
+          },
+        })
+      )
       customerFilter = cust ? cust.id : uid
     }
 
-    const orders = await db.order.findMany({
-      where: isUserAdmin ? {} : customerFilter ? { customerId: customerFilter } : {},
-      include: {
-        orderItems: true,
-        bill: true,
-        customer: { select: { name: true, email: true, phone: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    })
+    const orders = await withDbRetry(() =>
+      db.order.findMany({
+        where: isUserAdmin ? {} : customerFilter ? { customerId: customerFilter } : {},
+        include: {
+          orderItems: true,
+          bill: true,
+          customer: { select: { name: true, email: true, phone: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      })
+    )
 
     return NextResponse.json({ orders })
   } catch (error) {
-    console.error('[API/orders GET]', error)
-    return NextResponse.json({ error: 'Failed to fetch orders' }, { status: 500 })
+    logger.error('orders', 'fetch orders failed', {
+      reason: error instanceof Error ? error.message : String(error),
+    })
+    return NextResponse.json({ error: 'Order service temporarily unavailable, please retry' }, { status: 503 })
   }
 }
 
@@ -58,12 +58,28 @@ export async function POST(req: NextRequest) {
   try {
     const { uid: tokenUid, email: tokenEmail, name: tokenName } = extractAuthFromRequest(req)
 
-    let body: unknown
+    // Checkout throttle: 10 orders/min per user (falls back to IP when anonymous)
+    const limited = await checkRateLimit(req, 'checkout', tokenUid)
+    if (limited) return limited
+
+    // Warm the DB (absorbs Neon cold-start P1001) BEFORE the order
+    // transaction — never retry the transaction itself (would double-charge).
     try {
-      body = await req.json()
-    } catch {
-      return NextResponse.json({ error: 'Invalid order request body' }, { status: 400 })
+      await withDbRetry(() => db.$queryRawUnsafe('SELECT 1'));
+    } catch (warmErr) {
+      logger.error('orders', 'db unreachable during warmup', {
+        reason: warmErr instanceof Error ? warmErr.message : String(warmErr),
+      })
+      return NextResponse.json(
+        { error: 'Database temporarily unavailable, please retry in a few seconds' },
+        { status: 503 }
+      )
     }
+
+    const raw = await readJsonBody(req)
+    if (!raw.ok) return raw.response
+    const parsed = validate(orderCreateSchema, raw.body)
+    if (!parsed.ok) return parsed.response
 
     const {
       items: rawItems,
@@ -73,15 +89,7 @@ export async function POST(req: NextRequest) {
       customerName,
       customerPhone,
       customerEmail,
-    } = (body && typeof body === 'object' ? body : {}) as {
-      items?: CartItem[]
-      deliveryAddress?: string
-      notes?: string
-      customerId?: string
-      customerName?: string
-      customerPhone?: string
-      customerEmail?: string
-    }
+    } = parsed.data
 
     const items = Array.isArray(rawItems) ? rawItems : []
     const deliveryAddress = typeof rawDeliveryAddress === 'string' ? rawDeliveryAddress.trim() : ''
@@ -94,7 +102,19 @@ export async function POST(req: NextRequest) {
     }
 
     const effectiveUid = (customerId || tokenUid || '').trim()
+    // Fall back to the verified server session (sr-session cookie / Bearer)
+    // so password-login (ADMIN/STAFF) users can also check out.
+    let sessionFallback: { uid: string; email: string; name?: string | null } | null = null
     if (!effectiveUid) {
+      try {
+        const requester = await resolveRequester()
+        if (requester) sessionFallback = { uid: requester.uid, email: requester.email }
+      } catch {
+        // ignore — handled as unauthorized below
+      }
+    }
+    const resolvedUid = effectiveUid || sessionFallback?.uid?.trim() || ''
+    if (!resolvedUid) {
       return NextResponse.json({ error: 'Unauthorized: User sign-in required to place an order' }, { status: 401 })
     }
 
@@ -120,14 +140,15 @@ export async function POST(req: NextRequest) {
     const effectiveEmail = (
       customerEmail ||
       tokenEmail ||
-      `${effectiveUid}@smartretail.com`
+      sessionFallback?.email ||
+      `${resolvedUid}@smartretail.com`
     ).toLowerCase().trim()
 
     const effectiveName = (customerName || tokenName || 'Store Customer').trim()
     const effectivePhone = (customerPhone || '+91 98765 43210').trim()
 
     // 1. Resolve Customer safely (check by ID first, then by email)
-    let customer = await db.customer.findUnique({ where: { id: effectiveUid } })
+    let customer = await db.customer.findUnique({ where: { id: resolvedUid } })
     if (!customer && effectiveEmail) {
       customer = await db.customer.findUnique({ where: { email: effectiveEmail } })
     }
@@ -150,12 +171,12 @@ export async function POST(req: NextRequest) {
       // Verify email doesn't collide with another record
       const emailConflict = await db.customer.findUnique({ where: { email: effectiveEmail } })
       const safeEmail = emailConflict
-        ? `${effectiveUid}_${Date.now()}@smartretail.com`
+        ? `${resolvedUid}_${Date.now()}@smartretail.com`
         : effectiveEmail
 
       customer = await db.customer.create({
         data: {
-          id: effectiveUid,
+          id: resolvedUid,
           name: effectiveName,
           email: safeEmail,
           phone: effectivePhone,
@@ -336,10 +357,34 @@ export async function POST(req: NextRequest) {
           },
         })
       } catch (auditErr) {
-        console.warn('[API/orders] Non-critical audit log skipped:', auditErr)
+        logger.warn('orders', 'non-critical audit log skipped', {
+          orderId: order.id,
+          reason: auditErr instanceof Error ? auditErr.message : String(auditErr),
+        })
       }
 
       return { order, bill }
+    }, {
+      // Neon serverless latency: ~8 sequential writes × cold-start round-trips
+      // easily exceed Prisma's 5s default → P2028 "Transaction not found" (500).
+      maxWait: 15000,
+      timeout: 30000,
+    })
+
+    // Notify admin subscribers (best effort — must never fail the order).
+    logger.info('orders', 'order created', {
+      orderId: result.order.id,
+      billNumber: result.bill.billNumber,
+      itemCount: requestedItems.length,
+      total: result.order.total,
+    })
+    publishOrderEvent({
+      type: 'order.created',
+      orderId: result.order.id,
+      billNumber: result.bill.billNumber,
+      total: result.order.total,
+      itemCount: requestedItems.length,
+      createdAt: new Date().toISOString(),
     })
 
     return NextResponse.json({
@@ -349,8 +394,24 @@ export async function POST(req: NextRequest) {
       billId: result.bill.id,
     })
   } catch (error) {
-    console.error('[API/orders POST error]', error)
+    logger.error('orders', 'order creation failed', {
+      reason: error instanceof Error ? error.message : String(error),
+    })
     const message = error instanceof Error ? error.message : String(error)
+    const code = (error as { code?: string })?.code
+    const transient =
+      code === 'P1001' ||
+      code === 'P2028' ||
+      message.includes("Can't reach database server") ||
+      message.includes('timed out fetching a new connection') ||
+      message.includes('Transaction not found') ||
+      message.includes('Transaction expired')
+    if (transient) {
+      return NextResponse.json(
+        { error: 'Database waking up, please retry in a few seconds' },
+        { status: 503 }
+      )
+    }
     return NextResponse.json(
       { error: `Failed to create order: ${message}` },
       { status: 500 }

@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getStockStatus, getDiscountPercent } from '@/lib/utils'
+import { guardRoles } from '@/lib/auth-guard'
+import { apiError, readJsonBody, validate } from '@/lib/api-response'
+import { checkRateLimit } from '@/lib/rate-limit'
+import { idParamSchema } from '@/lib/validators/common'
+import { productUpdateSchema } from '@/lib/validators/products'
 
 export async function GET(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const { id } = await params
+    const { id: rawId } = await params
+    const idCheck = validate(idParamSchema, { id: rawId })
+    if (!idCheck.ok) return idCheck.response
+    const { id } = idCheck.data
     const product = await db.product.findUnique({
       where: { id },
       include: { category: true, supplier: true, inventory: true },
@@ -51,9 +59,23 @@ export async function GET(_req: NextRequest, { params }: { params: Promise<{ id:
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  // Catalog writes require staff — this endpoint was previously unauthenticated.
+  const { denied, requester } = await guardRoles(['ADMIN', 'STAFF'])
+  if (denied) return denied
+  if (!requester) return apiError('Unauthorized: sign-in required', 401)
+  const limited = await checkRateLimit(req, 'standard', requester.uid)
+  if (limited) return limited
   try {
-    const { id } = await params
-    const body = await req.json()
+    const { id: rawId } = await params
+    const idCheck = validate(idParamSchema, { id: rawId })
+    if (!idCheck.ok) return idCheck.response
+    const { id } = idCheck.data
+
+    const raw = await readJsonBody(req)
+    if (!raw.ok) return raw.response
+    const parsed = validate(productUpdateSchema, raw.body)
+    if (!parsed.ok) return parsed.response
+    const body = parsed.data
 
     const updated = await db.product.update({
       where: { id },
@@ -63,14 +85,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         ...(body.brand !== undefined && { brand: body.brand }),
         ...(body.description !== undefined && { description: body.description }),
         ...(body.unit && { unit: body.unit }),
-        ...(body.mrp !== undefined && { mrp: parseFloat(body.mrp) }),
-        ...(body.sellingPrice !== undefined && { sellingPrice: parseFloat(body.sellingPrice) }),
-        ...(body.taxRate !== undefined && { taxRate: parseFloat(body.taxRate) }),
+        ...(body.mrp !== undefined && { mrp: body.mrp }),
+        ...(body.sellingPrice !== undefined && { sellingPrice: body.sellingPrice }),
+        ...(body.taxRate !== undefined && { taxRate: body.taxRate }),
         ...(body.imageUrl && { imageUrl: body.imageUrl }),
         ...(body.supplierId !== undefined && { supplierId: body.supplierId }),
-        ...(body.reorderLevel !== undefined && { reorderLevel: parseInt(body.reorderLevel) }),
-        ...(body.safetyStock !== undefined && { safetyStock: parseInt(body.safetyStock) }),
-        ...(body.leadTimeDays !== undefined && { leadTimeDays: parseInt(body.leadTimeDays) }),
+        ...(body.reorderLevel !== undefined && { reorderLevel: body.reorderLevel }),
+        ...(body.safetyStock !== undefined && { safetyStock: body.safetyStock }),
+        ...(body.leadTimeDays !== undefined && { leadTimeDays: body.leadTimeDays }),
         ...(body.isActive !== undefined && { isActive: Boolean(body.isActive) }),
       },
       include: { category: true, supplier: true, inventory: true },

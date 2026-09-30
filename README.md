@@ -1,5 +1,6 @@
 # 🛒 Smart Retail AI Ecosystem
 
+[![CI](https://github.com/Haneef-Tech/Smart-Retail-ECO-System/actions/workflows/ci.yml/badge.svg)](https://github.com/Haneef-Tech/Smart-Retail-ECO-System/actions/workflows/ci.yml)
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FHaneef-Tech%2FSmart-Retail-ECO-System&project-name=smart-retail-eco-system&repo-name=smart-retail-eco-system&env=DATABASE_URL,GROQ_API_KEY,ADMIN_EMAIL)
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/Haneef-Tech/Smart-Retail-ECO-System)
 
@@ -49,7 +50,9 @@ Configure these in your hosting dashboard (Vercel / Render):
 |---|---|---|
 | `DATABASE_URL` | SQLite or PostgreSQL connection string | `file:./dev.db` |
 | `GROQ_API_KEY` | Groq API Key for AI Assistant | `gsk_...` |
-| `ADMIN_EMAIL` | Admin login email | `aluruhaneef1@gmail.com` |
+| `ADMIN_EMAIL` | Admin login email (also used as store helpdesk contact) | `admin@example.com` |
+| `ADMIN_PASSWORD` | Initial admin password — bcrypt-hashed on provision, never stored or committed in plaintext. If unset, no admin is created | `change-me-to-a-strong-random-password` |
+| `NEXTAUTH_SECRET` | Signs admin session cookies (required in production) | Output of `openssl rand -base64 32` |
 | `NEXTAUTH_SECRET` | Auth secret key | Any secure random string |
 
 ---
@@ -67,18 +70,33 @@ Configure these in your hosting dashboard (Vercel / Render):
    npm install
    ```
 
-3. **Generate Prisma Client**:
+3. **Create a free Postgres database (Neon)**:
+   - Sign up at [neon.tech](https://neon.tech) → New Project → copy the connection strings.
+   - In the Neon dashboard use the **Direct** (non-pooled) connection string — checkout runs an
+     interactive Prisma transaction, which PgBouncer-style pooled connections do not support.
+
+4. **Configure environment**:
    ```bash
-   npx prisma generate
+   cp .env.example .env
+   ```
+   Set in `.env` (and later in Vercel → Project Settings → Environment Variables):
+   - `DATABASE_URL` = Neon **Direct** connection string
+   - `DIRECT_URL` = same Neon **Direct** connection string (used by migrations)
+   - `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `NEXTAUTH_SECRET`, `GROQ_API_KEY`, Firebase keys
+
+5. **Migrate & seed**:
+   ```bash
+   npx prisma migrate deploy   # apply the initial migration (creates all 30 tables)
+   npm run db:seed             # idempotent: safe to run twice, 25 products upserted
    ```
 
-4. **Run Development Server**:
+6. **Run Development Server**:
    ```bash
    npm run dev
    ```
    Open [http://localhost:3000](http://localhost:3000).
 
-5. **Build for Production**:
+7. **Build for Production** (Vercel runs migrations automatically first):
    ```bash
    npm run build
    npm start
