@@ -9,7 +9,7 @@ const PROTECTED_ROUTES = ['/checkout', '/orders', '/profile', '/order-success']
 // Routes that require admin
 const ADMIN_ROUTES = ['/admin']
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   const token =
     request.cookies.get('firebase-token')?.value || request.cookies.get('sr-session')?.value
