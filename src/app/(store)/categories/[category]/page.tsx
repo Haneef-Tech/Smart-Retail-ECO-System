@@ -3,6 +3,8 @@ import { getStockStatus, getDiscountPercent } from '@/lib/utils'
 import ProductGrid from '@/components/product/ProductGrid'
 import type { Product } from '@/types'
 
+export const dynamic = 'force-dynamic'
+
 interface Props {
   params: Promise<{ category: string }>
 }
@@ -11,23 +13,28 @@ export default async function CategoryPage({ params }: Props) {
   const { category } = await params
   const decoded = decodeURIComponent(category)
 
-  const rawProducts = await db.product.findMany({
-    where: { isActive: true, category: { name: decoded } },
-    include: { category: true, inventory: true },
-    orderBy: { name: 'asc' },
-  })
+  let products: Product[] = []
+  try {
+    const rawProducts = await db.product.findMany({
+      where: { isActive: true, category: { name: decoded } },
+      include: { category: true, inventory: true },
+      orderBy: { name: 'asc' },
+    })
 
-  const products: Product[] = rawProducts.map((p) => {
-    const stock = p.inventory?.availableQuantity ?? 0
-    return {
-      ...p,
-      category: p.category.name,
-      stock,
-      stockStatus: getStockStatus(stock, p.reorderLevel),
-      discountPercent: getDiscountPercent(p.mrp, p.sellingPrice),
-      description: p.description ?? undefined,
-    }
-  })
+    products = rawProducts.map((p) => {
+      const stock = p.inventory?.availableQuantity ?? 0
+      return {
+        ...p,
+        category: p.category.name,
+        stock,
+        stockStatus: getStockStatus(stock, p.reorderLevel),
+        discountPercent: getDiscountPercent(p.mrp, p.sellingPrice),
+        description: p.description ?? undefined,
+      }
+    })
+  } catch (err) {
+    console.error('[CategoryPage error]', err)
+  }
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">

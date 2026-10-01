@@ -2,12 +2,19 @@ import { db } from '@/lib/db'
 import { formatPrice, formatDateTime } from '@/lib/utils'
 import { requirePageRole } from '@/lib/auth-guard'
 
+export const dynamic = 'force-dynamic'
+
 export default async function AdminBillsPage() {
   await requirePageRole(['ADMIN', 'STAFF'])
-  const bills = await db.bill.findMany({
-    orderBy: { generatedAt: 'desc' },
-    include: { order: { include: { customer: { select: { name: true } } } } },
-  })
+  let bills: any[] = []
+  try {
+    bills = await db.bill.findMany({
+      orderBy: { generatedAt: 'desc' },
+      include: { order: { include: { customer: { select: { name: true } } } } },
+    })
+  } catch (err) {
+    console.error('[AdminBillsPage error]', err)
+  }
 
   return (
     <div className="p-6">
@@ -41,4 +48,3 @@ export default async function AdminBillsPage() {
     </div>
   )
 }
-

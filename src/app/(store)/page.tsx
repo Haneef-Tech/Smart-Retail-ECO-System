@@ -7,23 +7,30 @@ import BenefitsBar from '@/components/home/BenefitsBar'
 import { SectionHeader } from '@/components/ui/fresh'
 import type { Product } from '@/types'
 
+export const dynamic = 'force-dynamic'
+
 async function getProducts(): Promise<Product[]> {
-  const products = await db.product.findMany({
-    where: { isActive: true },
-    include: { category: true, inventory: true },
-    orderBy: { name: 'asc' },
-  })
-  return products.map((p) => {
-    const stock = p.inventory?.availableQuantity ?? 0
-    return {
-      ...p,
-      category: p.category.name,
-      stock,
-      stockStatus: getStockStatus(stock, p.reorderLevel),
-      discountPercent: getDiscountPercent(p.mrp, p.sellingPrice),
-      description: p.description ?? undefined,
-    }
-  })
+  try {
+    const products = await db.product.findMany({
+      where: { isActive: true },
+      include: { category: true, inventory: true },
+      orderBy: { name: 'asc' },
+    })
+    return products.map((p) => {
+      const stock = p.inventory?.availableQuantity ?? 0
+      return {
+        ...p,
+        category: p.category.name,
+        stock,
+        stockStatus: getStockStatus(stock, p.reorderLevel),
+        discountPercent: getDiscountPercent(p.mrp, p.sellingPrice),
+        description: p.description ?? undefined,
+      }
+    })
+  } catch (err) {
+    console.error('[HomePage getProducts error]', err)
+    return []
+  }
 }
 
 export default async function HomePage() {

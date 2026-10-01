@@ -7,24 +7,31 @@ import AddToCartButton from '@/components/product/AddToCartButton'
 import StockBadge from '@/components/ui/StockBadge'
 import { Phone, Mail } from 'lucide-react'
 
+export const dynamic = 'force-dynamic'
+
 interface Props {
   params: Promise<{ id: string }>
 }
 
 async function getProduct(id: string): Promise<Product | null> {
-  const p = await db.product.findUnique({
-    where: { id },
-    include: { category: true, inventory: true },
-  })
-  if (!p) return null
-  const stock = p.inventory?.availableQuantity ?? 0
-  return {
-    ...p,
-    category: p.category.name,
-    stock,
-    stockStatus: getStockStatus(stock, p.reorderLevel),
-    discountPercent: getDiscountPercent(p.mrp, p.sellingPrice),
-    description: p.description ?? undefined,
+  try {
+    const p = await db.product.findUnique({
+      where: { id },
+      include: { category: true, inventory: true },
+    })
+    if (!p) return null
+    const stock = p.inventory?.availableQuantity ?? 0
+    return {
+      ...p,
+      category: p.category.name,
+      stock,
+      stockStatus: getStockStatus(stock, p.reorderLevel),
+      discountPercent: getDiscountPercent(p.mrp, p.sellingPrice),
+      description: p.description ?? undefined,
+    }
+  } catch (err) {
+    console.error('[getProduct error]', err)
+    return null
   }
 }
 

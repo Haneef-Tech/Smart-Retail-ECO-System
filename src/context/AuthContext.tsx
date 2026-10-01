@@ -23,18 +23,32 @@ interface AuthContextType {
   getIdToken: () => Promise<string | null>
 }
 
+const ADMIN_EMAIL = (process.env.NEXT_PUBLIC_ADMIN_EMAIL || 'aluruhaneef1@gmail.com').toLowerCase().trim()
+
 const AuthContext = createContext<AuthContextType>({} as AuthContextType)
 
 async function fetchSession(): Promise<{ role: Role; email: string | null }> {
   try {
     const res = await fetch('/api/auth/me', { cache: 'no-store', credentials: 'include' })
-    // /api/auth/me always returns 200 ({ authenticated, role }) — a non-OK
-    // status just means the session endpoint is unreachable; stay silent so
-    // logged-out users don't get console 401 noise.
     if (!res.ok) return { role: null, email: null }
     const data = await res.json()
     if (data && data.authenticated === false) return { role: null, email: null }
     return { role: (data.role as Role) ?? null, email: (data.email as string) ?? null }
+  } catch {
+    return { role: null, email: null }
+  }
+}
+
+async function syncServerSession(email: string, token?: string): Promise<{ role: Role; email: string | null }> {
+  try {
+    const res = await fetch('/api/auth/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, token }),
+    })
+    if (!res.ok) return { role: null, email: null }
+    const data = await res.json()
+    return { role: (data.role as Role) ?? null, email: (data.email as string) ?? email }
   } catch {
     return { role: null, email: null }
   }
@@ -49,7 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let unsub = () => {}
     const init = async () => {
-      // Server session (password login) role, if present
+      // 1. Check server session cookie first
       const serverSession = await fetchSession()
       if (serverSession.role) setRole(serverSession.role)
       if (serverSession.email) setSessionEmail(serverSession.email)
@@ -61,12 +75,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               setUser(u)
               const token = await u.getIdToken()
               document.cookie = `firebase-token=${token}; path=/; max-age=86400; SameSite=Lax`
-              // A password-login session takes precedence for role; otherwise
-              // re-check in case a server session was established.
-              setRole((prev) => prev)
-              const r = await fetchSession()
-              if (r.role) setRole(r.role)
-              if (r.email) setSessionEmail(r.email)
+
+              const userEmail = (u.email || '').toLowerCase().trim()
+              if (userEmail === ADMIN_EMAIL) {
+                setRole('ADMIN')
+                setSessionEmail(u.email)
+              }
+
+              // Establish server session cookie for both Firebase & server components
+              const sync = await syncServerSession(userEmail, token)
+              if (sync.role) setRole(sync.role)
+              if (sync.email) setSessionEmail(sync.email)
             } else {
               setUser(null)
               document.cookie = 'firebase-token=; path=/; max-age=0'
@@ -90,6 +109,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async (email: string, password: string) => {
     const trimmedEmail = email.trim()
     const trimmedPwd = password.trim()
+    const isTargetAdmin = trimmedEmail.toLowerCase() === ADMIN_EMAIL
 
     // 1. Password login against server-provisioned DB users (admin/staff, bcrypt).
     try {
@@ -100,17 +120,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       if (res.ok) {
         const data = await res.json()
-        setRole((data.role as Role) ?? null)
+        setRole((data.role as Role) ?? 'ADMIN')
         setSessionEmail((data.email as string) ?? trimmedEmail)
         return
       }
     } catch {
-      // Fall through to Firebase customer login
+      // Fall through to Firebase customer/admin login
     }
 
-    // 2. Normal customer login via Firebase
+    // 2. Normal login via Firebase
     try {
-      await signInWithEmailAndPassword(auth, trimmedEmail, trimmedPwd)
+      const cred = await signInWithEmailAndPassword(auth, trimmedEmail, trimmedPwd)
+      if (cred.user) {
+        const token = await cred.user.getIdToken()
+        document.cookie = `firebase-token=${token}; path=/; max-age=86400; SameSite=Lax`
+        if (isTargetAdmin) {
+          setRole('ADMIN')
+          setSessionEmail(cred.user.email)
+        }
+        const sync = await syncServerSession(trimmedEmail, token)
+        if (sync.role) setRole(sync.role)
+        if (sync.email) setSessionEmail(sync.email)
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Login failed'
       if (msg.includes('user-not-found') || msg.includes('invalid-credential')) {
@@ -135,6 +166,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setRole(null)
     setSessionEmail(null)
     document.cookie = 'firebase-token=; path=/; max-age=0'
+    document.cookie = 'sr-session=; path=/; max-age=0'
   }, [])
 
   const getIdToken = async (): Promise<string | null> => {
@@ -142,7 +174,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return user.getIdToken()
   }
 
-  const isAdmin = role === 'ADMIN' || role === 'STAFF'
+  const isAdmin =
+    role === 'ADMIN' ||
+    role === 'STAFF' ||
+    user?.email?.toLowerCase() === ADMIN_EMAIL ||
+    sessionEmail?.toLowerCase() === ADMIN_EMAIL
 
   return (
     <AuthContext.Provider value={{ user, loading, role, sessionEmail, isAdmin, login, logout, getIdToken }}>

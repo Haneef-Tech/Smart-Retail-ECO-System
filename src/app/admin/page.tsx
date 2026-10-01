@@ -22,35 +22,50 @@ import { requirePageRole } from '@/lib/auth-guard'
 export const dynamic = 'force-dynamic'
 
 async function getLiveMetrics() {
-  const [products, suppliers, allOrders, purchases, storeSalesRecords] = await Promise.all([
-    db.product.findMany({
-      where: { isActive: true },
-      include: {
-        category: { select: { name: true } },
-        supplier: { select: { name: true, leadTimeDays: true } },
-        inventory: true,
-      },
-      orderBy: { name: 'asc' },
-    }),
-    db.supplier.findMany({
-      include: { _count: { select: { products: true, purchases: true } } },
-      orderBy: { code: 'asc' },
-    }),
-    db.order.findMany({
-      orderBy: { createdAt: 'desc' },
-      include: {
-        customer: { select: { name: true, phone: true, email: true } },
-        orderItems: true,
-        bill: { select: { billNumber: true, paymentStatus: true } },
-      },
-    }),
-    db.purchase.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 6,
-      include: { supplier: true, purchaseItems: true },
-    }),
-    db.storeSaleRecord.count(),
-  ])
+  let products: any[] = []
+  let suppliers: any[] = []
+  let allOrders: any[] = []
+  let purchases: any[] = []
+  let storeSalesRecords = 0
+
+  try {
+    const res = await Promise.all([
+      db.product.findMany({
+        where: { isActive: true },
+        include: {
+          category: { select: { name: true } },
+          supplier: { select: { name: true, leadTimeDays: true } },
+          inventory: true,
+        },
+        orderBy: { name: 'asc' },
+      }),
+      db.supplier.findMany({
+        include: { _count: { select: { products: true, purchases: true } } },
+        orderBy: { code: 'asc' },
+      }),
+      db.order.findMany({
+        orderBy: { createdAt: 'desc' },
+        include: {
+          customer: { select: { name: true, phone: true, email: true } },
+          orderItems: true,
+          bill: { select: { billNumber: true, paymentStatus: true } },
+        },
+      }),
+      db.purchase.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 6,
+        include: { supplier: true, purchaseItems: true },
+      }),
+      db.storeSaleRecord.count(),
+    ])
+    products = res[0]
+    suppliers = res[1]
+    allOrders = res[2]
+    purchases = res[3]
+    storeSalesRecords = res[4]
+  } catch (err) {
+    console.error('[AdminDashboard getLiveMetrics error]', err)
+  }
 
   // Current Date Boundaries (Local / IST)
   const now = new Date()

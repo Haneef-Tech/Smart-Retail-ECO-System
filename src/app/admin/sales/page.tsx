@@ -3,15 +3,22 @@ import { formatPrice, formatDateTime } from '@/lib/utils'
 import { TrendingUp, ShoppingBag, DollarSign, CreditCard } from 'lucide-react'
 import { requirePageRole } from '@/lib/auth-guard'
 
+export const dynamic = 'force-dynamic'
+
 export default async function AdminSalesPage() {
   await requirePageRole(['ADMIN', 'STAFF'])
-  const sales = await db.sale.findMany({
-    orderBy: { createdAt: 'desc' },
-    include: {
-      order: { select: { id: true, customer: { select: { name: true, email: true } } } },
-      saleItems: { include: { product: { select: { name: true, sku: true } } } },
-    },
-  })
+  let sales: any[] = []
+  try {
+    sales = await db.sale.findMany({
+      orderBy: { createdAt: 'desc' },
+      include: {
+        order: { select: { id: true, customer: { select: { name: true, email: true } } } },
+        saleItems: { include: { product: { select: { name: true, sku: true } } } },
+      },
+    })
+  } catch (err) {
+    console.error('[AdminSalesPage error]', err)
+  }
 
   const totalRevenue = sales.reduce((s, item) => s + item.totalAmount, 0)
   const totalTax = sales.reduce((s, item) => s + item.taxAmount, 0)
@@ -83,4 +90,3 @@ export default async function AdminSalesPage() {
     </div>
   )
 }
-
