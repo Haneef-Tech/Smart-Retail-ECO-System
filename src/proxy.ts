@@ -18,7 +18,9 @@ export function proxy(request: NextRequest) {
   // For server-side admin guard, we rely on /admin/layout.tsx server component
   if (ADMIN_ROUTES.some((r) => pathname.startsWith(r))) {
     if (!token) {
-      return NextResponse.redirect(new URL('/auth/login', request.url))
+      const loginUrl = new URL('/auth/login', request.url)
+      loginUrl.searchParams.set('redirect', pathname)
+      return NextResponse.redirect(loginUrl)
     }
     return NextResponse.next()
   }

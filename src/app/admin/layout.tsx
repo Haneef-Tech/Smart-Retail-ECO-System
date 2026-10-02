@@ -89,17 +89,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   useEffect(() => {
     if (!loading && !isAdmin) {
-      router.replace('/')
+      router.replace('/auth/login?redirect=/admin')
     }
   }, [isAdmin, loading, router])
 
   if (loading || !isAdmin) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="sr-skeleton w-40 h-4" />
-          <div className="sr-skeleton w-64 h-24" />
-        </div>
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
+        <div className="w-10 h-10 border-4 border-emerald-600 border-t-transparent rounded-full animate-spin mb-4" />
+        <p className="text-sm font-semibold text-gray-800">Verifying Admin Access...</p>
+        <p className="text-xs text-gray-500 mt-1">Please wait or sign in to continue</p>
       </div>
     )
   }

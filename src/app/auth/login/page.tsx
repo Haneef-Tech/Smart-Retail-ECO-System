@@ -24,22 +24,18 @@ export default function LoginPage() {
     setLoading(true)
     try {
       await login(email, password)
-      if (isAdmin) {
-        router.push('/admin')
-      } else {
-        // Role resolves async after login; re-check server session for admin/staff.
-        try {
-          const res = await fetch('/api/auth/me', { cache: 'no-store', credentials: 'include' })
-          const data = res.ok ? await res.json() : null
-          if (data?.role === 'ADMIN' || data?.role === 'STAFF') {
-            router.push('/admin')
-            return
-          }
-        } catch {
-          // Fall through to customer redirect
+      // Check server session for admin/staff role
+      try {
+        const res = await fetch('/api/auth/me', { cache: 'no-store', credentials: 'include' })
+        const data = res.ok ? await res.json() : null
+        if (data?.role === 'ADMIN' || data?.role === 'STAFF') {
+          window.location.href = '/admin'
+          return
         }
-        router.push(redirect || '/')
+      } catch {
+        // Fall through to standard redirect
       }
+      window.location.href = redirect || '/'
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Login failed'
       setError(msg)
