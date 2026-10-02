@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { db, withDbRetry } from '@/lib/db'
 import { getStockStatus, getDiscountPercent } from '@/lib/utils'
 import HeroBanner from '@/components/home/HeroBanner'
 import CategorySidebar from '@/components/home/CategorySidebar'
@@ -11,11 +11,13 @@ export const dynamic = 'force-dynamic'
 
 async function getProducts(): Promise<Product[]> {
   try {
-    const products = await db.product.findMany({
-      where: { isActive: true },
-      include: { category: true, inventory: true },
-      orderBy: { name: 'asc' },
-    })
+    const products = await withDbRetry(() =>
+      db.product.findMany({
+        where: { isActive: true },
+        include: { category: true, inventory: true },
+        orderBy: { name: 'asc' },
+      })
+    )
     return products.map((p) => {
       const stock = p.inventory?.availableQuantity ?? 0
       return {
@@ -28,7 +30,7 @@ async function getProducts(): Promise<Product[]> {
       }
     })
   } catch (err) {
-    console.error('[HomePage getProducts error]', err)
+    console.error('[HomePage getProducts error]:', err)
     return []
   }
 }

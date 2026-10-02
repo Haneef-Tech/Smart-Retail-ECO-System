@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { db, withDbRetry } from '@/lib/db'
 import { getStockStatus, getDiscountPercent } from '@/lib/utils'
 import ProductGrid from '@/components/product/ProductGrid'
 import type { Product } from '@/types'
@@ -15,13 +15,14 @@ export default async function CategoryPage({ params }: Props) {
 
   let products: Product[] = []
   try {
-    const rawProducts = await db.product.findMany({
-      where: { isActive: true, category: { name: decoded } },
-      include: { category: true, inventory: true },
-      orderBy: { name: 'asc' },
-    })
-
-    products = rawProducts.map((p) => {
+    const raw = await withDbRetry(() =>
+      db.product.findMany({
+        where: { isActive: true, category: { name: decoded } },
+        include: { category: true, inventory: true },
+        orderBy: { name: 'asc' },
+      })
+    )
+    products = raw.map((p) => {
       const stock = p.inventory?.availableQuantity ?? 0
       return {
         ...p,
@@ -33,7 +34,7 @@ export default async function CategoryPage({ params }: Props) {
       }
     })
   } catch (err) {
-    console.error('[CategoryPage error]', err)
+    console.error('[CategoryPage] DB error:', err)
   }
 
   return (

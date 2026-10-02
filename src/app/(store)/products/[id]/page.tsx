@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import Image from 'next/image'
-import { db } from '@/lib/db'
+import { db, withDbRetry } from '@/lib/db'
 import { getStockStatus, getDiscountPercent, formatPrice } from '@/lib/utils'
 import type { Product } from '@/types'
 import AddToCartButton from '@/components/product/AddToCartButton'
@@ -15,10 +15,12 @@ interface Props {
 
 async function getProduct(id: string): Promise<Product | null> {
   try {
-    const p = await db.product.findUnique({
-      where: { id },
-      include: { category: true, inventory: true },
-    })
+    const p = await withDbRetry(() =>
+      db.product.findUnique({
+        where: { id },
+        include: { category: true, inventory: true },
+      })
+    )
     if (!p) return null
     const stock = p.inventory?.availableQuantity ?? 0
     return {
@@ -30,7 +32,7 @@ async function getProduct(id: string): Promise<Product | null> {
       description: p.description ?? undefined,
     }
   } catch (err) {
-    console.error('[getProduct error]', err)
+    console.error('[ProductDetailPage] DB error:', err)
     return null
   }
 }

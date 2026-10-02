@@ -7,7 +7,7 @@ export interface RatePreset {
 }
 
 export const RATE_PRESETS = {
-  login: { limit: 30, windowS: 60 }, // 30/min per IP
+  login: { limit: 5, windowS: 60 }, // 5/min per IP
   aiChat: { limit: 20, windowS: 60 }, // 20/min per user
   aiExecute: { limit: 20, windowS: 60 }, // 20/min per user
   csvUpload: { limit: 5, windowS: 3600 }, // 5/hour per user

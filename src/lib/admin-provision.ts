@@ -1,65 +1,44 @@
 import bcrypt from 'bcryptjs'
 import { db } from '@/lib/db'
 
-// Provisions (or refreshes) the admin User from env vars.
-// - Safe defaults provided if environment variables are not set.
+// Provisions (or refreshes) the admin User from env vars ONLY.
+// - Requires BOTH ADMIN_EMAIL and ADMIN_PASSWORD.
+// - If ADMIN_PASSWORD is missing/empty, NO admin is created (fail closed).
 // - Password is stored as a bcrypt hash, never plaintext.
 // Safe to call repeatedly (upsert); callers should cache the promise.
 export async function ensureAdminProvisioned(): Promise<{ email: string } | null> {
-  const email = (process.env.ADMIN_EMAIL || 'aluruhaneef1@gmail.com').trim().toLowerCase()
-  const password = process.env.ADMIN_PASSWORD || 'haneef@123'
+  const email = (process.env.ADMIN_EMAIL || '').trim().toLowerCase()
+  const password = process.env.ADMIN_PASSWORD || ''
 
-  if (!email) {
-    return null
-  }
-
-  try {
-    const adminRole = await db.role.upsert({
-      where: { name: 'ADMIN' },
-      update: {},
-      create: { name: 'ADMIN', description: 'Full system administrator' },
-    })
-
-    const existingUser = await db.user.findUnique({
-      where: { email },
-    })
-
-    // If user already exists and password hash matches, no need to rehash
-    if (existingUser && existingUser.passwordHash) {
-      const matches = await bcrypt.compare(password, existingUser.passwordHash).catch(() => false)
-      if (matches && existingUser.roleId === adminRole.id) {
-        return { email: existingUser.email }
-      }
+  if (!email || !password) {
+    if (!password) {
+      console.warn('[admin-provision] ADMIN_PASSWORD not set — skipping admin auto-provisioning.')
     }
-
-    const passwordHash = await bcrypt.hash(password, 10)
-
-    const user = await db.user.upsert({
-      where: { email },
-      update: { passwordHash, roleId: adminRole.id },
-      create: { email, passwordHash, roleId: adminRole.id },
-    })
-
-    return { email: user.email }
-  } catch (error) {
-    console.error('[admin-provision] Failed to provision admin:', error)
     return null
   }
+
+  const adminRole = await db.role.upsert({
+    where: { name: 'ADMIN' },
+    update: {},
+    create: { name: 'ADMIN', description: 'Full system administrator' },
+  })
+
+  const passwordHash = await bcrypt.hash(password, 12)
+
+  const user = await db.user.upsert({
+    where: { email },
+    update: { passwordHash, roleId: adminRole.id },
+    create: { email, passwordHash, roleId: adminRole.id },
+  })
+
+  return { email: user.email }
 }
 
 export async function verifyPassword(password: string, hash: string | null): Promise<boolean> {
-  if (!password) return false
-  const trimmed = password.trim()
-  if (hash) {
-    try {
-      if (await bcrypt.compare(trimmed, hash)) return true
-    } catch {
-      // ignore
-    }
+  if (!password || !hash) return false
+  try {
+    return await bcrypt.compare(password, hash)
+  } catch {
+    return false
   }
-  const envPwd = (process.env.ADMIN_PASSWORD || 'haneef@123').trim()
-  if (trimmed === envPwd || trimmed === 'haneef@123' || trimmed === 'haneef123') {
-    return true
-  }
-  return false
 }

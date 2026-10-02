@@ -2,17 +2,9 @@ import { db } from '@/lib/db'
 import { formatDate } from '@/lib/utils'
 import { requirePageRole } from '@/lib/auth-guard'
 
-export const dynamic = 'force-dynamic'
-
 export default async function AdminCustomersPage() {
   await requirePageRole(['ADMIN', 'STAFF'])
-  let customers: any[] = []
-  try {
-    customers = await db.customer.findMany({ orderBy: { createdAt: 'desc' } })
-  } catch (err) {
-    console.error('[AdminCustomersPage error]', err)
-  }
-
+  const customers = await db.customer.findMany({ orderBy: { createdAt: 'desc' } })
   return (
     <div className="p-6">
       <h1 className="text-xl font-bold text-gray-900 mb-6">Customers ({customers.length})</h1>
@@ -41,3 +33,4 @@ export default async function AdminCustomersPage() {
     </div>
   )
 }
+

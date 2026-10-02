@@ -82,24 +82,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   // gate on isAdmin so both login paths can enter.
   const displayEmail = user?.email ?? sessionEmail ?? ''
 
-  const ADMIN_EMAIL = (process.env.NEXT_PUBLIC_ADMIN_EMAIL || 'aluruhaneef1@gmail.com').toLowerCase().trim()
-  const isAuthorized =
-    isAdmin ||
-    user?.email?.toLowerCase() === ADMIN_EMAIL ||
-    sessionEmail?.toLowerCase() === ADMIN_EMAIL
-
   // Auto-close mobile drawer when user navigates to a new page
   useEffect(() => {
     setMobileMenuOpen(false)
   }, [pathname])
 
   useEffect(() => {
-    if (!loading && !isAuthorized) {
+    if (!loading && !isAdmin) {
       router.replace('/')
     }
-  }, [isAuthorized, loading, router])
+  }, [isAdmin, loading, router])
 
-  if (loading || !isAuthorized) {
+  if (loading || !isAdmin) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
