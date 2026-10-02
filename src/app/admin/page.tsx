@@ -1,4 +1,4 @@
-import { db } from '@/lib/db'
+import { db, withDbRetry } from '@/lib/db'
 import Link from 'next/link'
 import {
   IndianRupee,
@@ -21,11 +21,43 @@ import { requirePageRole } from '@/lib/auth-guard'
 
 export const dynamic = 'force-dynamic'
 
+const EMPTY_METRICS = {
+  totalProducts: 0,
+  totalUnits: 0,
+  totalValuation: 0,
+  lowStockItems: [],
+  suppliersCount: 0,
+  todayRevenue: 0,
+  todayOrdersCount: 0,
+  todayUnitsSold: 0,
+  topItemsToday: [],
+  revenueTrend: '+0.0%',
+  revenueTrendUp: true,
+  ordersTrend: '+0.0%',
+  ordersTrendUp: true,
+  unitsTrend: '+0.0%',
+  unitsTrendUp: true,
+  allTimeRevenue: 0,
+  totalOrdersCount: 0,
+  pendingOrdersCount: 0,
+  recentOrders: [],
+  recentPurchases: [],
+  historicalCsvRecordsCount: 0,
+  monthlySales: [],
+  outOfStockCount: 0,
+  overstockCount: 0,
+  deadStockCount: 0,
+  categoryPerf: [],
+  forecast: [],
+}
+
 async function getLiveMetrics() {
-  const [products, suppliers, allOrders, purchases, storeSalesRecords] = await Promise.all([
-    db.product.findMany({
-      where: { isActive: true },
-      include: {
+  try {
+    const [products, suppliers, allOrders, purchases, storeSalesRecords] = await withDbRetry(() =>
+      Promise.all([
+        db.product.findMany({
+          where: { isActive: true },
+          include: {
         category: { select: { name: true } },
         supplier: { select: { name: true, leadTimeDays: true } },
         inventory: true,
@@ -51,6 +83,7 @@ async function getLiveMetrics() {
     }),
     db.storeSaleRecord.count(),
   ])
+)
 
   // Current Date Boundaries (Local / IST)
   const now = new Date()
@@ -215,6 +248,10 @@ async function getLiveMetrics() {
     categoryPerf,
     forecast,
   }
+  } catch (err) {
+    console.error('[AdminDashboardPage getLiveMetrics error]:', err)
+    return EMPTY_METRICS
+  }
 }
 
 const TILE_COLORS = ['bg-green-100 text-[#16A34A]', 'bg-blue-100 text-[#3B82F6]', 'bg-purple-100 text-[#8B5CF6]', 'bg-orange-100 text-[#F59E0B]', 'bg-pink-100 text-[#EC4899]']
@@ -222,7 +259,13 @@ const BAR_COLORS = ['#16A34A', '#3B82F6', '#8B5CF6', '#F59E0B', '#EC4899']
 
 export default async function AdminDashboardPage() {
   await requirePageRole(['ADMIN', 'STAFF'])
-  const data = await getLiveMetrics()
+  let data
+  try {
+    data = await getLiveMetrics()
+  } catch (err) {
+    console.error('[AdminDashboardPage error]:', err)
+    data = EMPTY_METRICS
+  }
 
   return (
     <div className="space-y-5 sm:space-y-6">

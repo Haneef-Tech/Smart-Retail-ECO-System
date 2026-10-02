@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { db } from '@/lib/db'
+import { db, withDbRetry } from '@/lib/db'
 import { ensureAdminProvisioned, verifyPassword } from '@/lib/admin-provision'
 import { signSessionToken, buildSessionCookie, type AppRole } from '@/lib/auth-guard'
 import { apiError, readJsonBody, validate } from '@/lib/api-response'
@@ -25,10 +25,12 @@ export async function POST(req: NextRequest) {
     if (!parsed.ok) return parsed.response
     const { email, password } = parsed.data
 
-    const user = await db.user.findUnique({
-      where: { email: email.trim().toLowerCase() },
-      include: { role: { select: { name: true } } },
-    })
+    const user = await withDbRetry(() =>
+      db.user.findUnique({
+        where: { email: email.trim().toLowerCase() },
+        include: { role: { select: { name: true } } },
+      })
+    )
     if (!user || !(await verifyPassword(password, user.passwordHash))) {
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 })
     }

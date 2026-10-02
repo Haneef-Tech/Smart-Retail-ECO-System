@@ -1,11 +1,13 @@
 import bcrypt from 'bcryptjs'
-import { db } from '@/lib/db'
+import { db, withDbRetry } from '@/lib/db'
+
+let provisionedEmail: string | null = null
+let isProvisioning = false
 
 // Provisions (or refreshes) the admin User from env vars ONLY.
 // - Requires BOTH ADMIN_EMAIL and ADMIN_PASSWORD.
-// - If ADMIN_PASSWORD is missing/empty, NO admin is created (fail closed).
 // - Password is stored as a bcrypt hash, never plaintext.
-// Safe to call repeatedly (upsert); callers should cache the promise.
+// - Caches successful provisioning in-memory to avoid hammering the DB on every request.
 export async function ensureAdminProvisioned(): Promise<{ email: string } | null> {
   const email = (process.env.ADMIN_EMAIL || '').trim().toLowerCase()
   const password = process.env.ADMIN_PASSWORD || ''
@@ -17,21 +19,43 @@ export async function ensureAdminProvisioned(): Promise<{ email: string } | null
     return null
   }
 
-  const adminRole = await db.role.upsert({
-    where: { name: 'ADMIN' },
-    update: {},
-    create: { name: 'ADMIN', description: 'Full system administrator' },
-  })
+  // Already provisioned in this server instance
+  if (provisionedEmail === email) {
+    return { email }
+  }
 
-  const passwordHash = await bcrypt.hash(password, 12)
+  if (isProvisioning) {
+    return { email }
+  }
 
-  const user = await db.user.upsert({
-    where: { email },
-    update: { passwordHash, roleId: adminRole.id },
-    create: { email, passwordHash, roleId: adminRole.id },
-  })
+  isProvisioning = true
+  try {
+    const result = await withDbRetry(async () => {
+      const adminRole = await db.role.upsert({
+        where: { name: 'ADMIN' },
+        update: {},
+        create: { name: 'ADMIN', description: 'Full system administrator' },
+      })
 
-  return { email: user.email }
+      const passwordHash = await bcrypt.hash(password, 10)
+
+      const user = await db.user.upsert({
+        where: { email },
+        update: { passwordHash, roleId: adminRole.id },
+        create: { email, passwordHash, roleId: adminRole.id },
+      })
+
+      return user
+    })
+
+    provisionedEmail = result.email
+    return { email: result.email }
+  } catch (err) {
+    console.error('[admin-provision] failed:', err)
+    return null
+  } finally {
+    isProvisioning = false
+  }
 }
 
 export async function verifyPassword(password: string, hash: string | null): Promise<boolean> {

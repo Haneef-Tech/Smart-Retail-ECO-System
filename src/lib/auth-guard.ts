@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from 'crypto'
 import { cookies, headers } from 'next/headers'
 import { NextResponse } from 'next/server'
 import { redirect, forbidden } from 'next/navigation'
-import { db } from '@/lib/db'
+import { db, withDbRetry } from '@/lib/db'
 import { adminAuth } from '@/lib/firebase-admin'
 import { ensureAdminProvisioned } from '@/lib/admin-provision'
 
@@ -113,12 +113,19 @@ export async function resolveRequester(): Promise<Requester | null> {
   // 1. First-party signed session
   const session = verifySessionToken(raw)
   if (session) {
-    const user = await db.user.findUnique({
-      where: { id: session.uid },
-      include: { role: { select: { name: true } } },
-    })
-    if (!user || user.email.toLowerCase() !== session.email.toLowerCase()) return null
-    return { uid: user.id, email: user.email, role: user.role.name as AppRole }
+    try {
+      const user = await withDbRetry(() =>
+        db.user.findUnique({
+          where: { id: session.uid },
+          include: { role: { select: { name: true } } },
+        })
+      )
+      if (!user || user.email.toLowerCase() !== session.email.toLowerCase()) return null
+      return { uid: user.id, email: user.email, role: user.role.name as AppRole }
+    } catch (err) {
+      console.error('[auth-guard resolveRequester session error]:', err)
+      return null
+    }
   }
 
   // 2. Verified Firebase ID token (only when Admin SDK is configured)
