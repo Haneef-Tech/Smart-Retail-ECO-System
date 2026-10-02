@@ -17,20 +17,30 @@ export async function POST(req: NextRequest) {
   if (limited) return limited
 
   try {
-    await ensureAdminProvisioned()
-
     const raw = await readJsonBody(req)
     if (!raw.ok) return raw.response
     const parsed = validate(loginSchema, raw.body)
     if (!parsed.ok) return parsed.response
     const { email, password } = parsed.data
 
-    const user = await withDbRetry(() =>
+    let user = await withDbRetry(() =>
       db.user.findUnique({
         where: { email: email.trim().toLowerCase() },
         include: { role: { select: { name: true } } },
       })
     )
+
+    // Lazy provision only if admin user does not exist in DB
+    if (!user && email.trim().toLowerCase() === (process.env.ADMIN_EMAIL || '').trim().toLowerCase()) {
+      await ensureAdminProvisioned()
+      user = await withDbRetry(() =>
+        db.user.findUnique({
+          where: { email: email.trim().toLowerCase() },
+          include: { role: { select: { name: true } } },
+        })
+      )
+    }
+
     if (!user || !(await verifyPassword(password, user.passwordHash))) {
       return NextResponse.json({ error: 'Invalid email or password' }, { status: 401 })
     }
