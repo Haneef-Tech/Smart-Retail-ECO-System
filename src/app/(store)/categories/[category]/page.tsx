@@ -1,9 +1,7 @@
-import { db, withDbRetry } from '@/lib/db'
+import { db } from '@/lib/db'
 import { getStockStatus, getDiscountPercent } from '@/lib/utils'
 import ProductGrid from '@/components/product/ProductGrid'
 import type { Product } from '@/types'
-
-export const dynamic = 'force-dynamic'
 
 interface Props {
   params: Promise<{ category: string }>
@@ -13,29 +11,23 @@ export default async function CategoryPage({ params }: Props) {
   const { category } = await params
   const decoded = decodeURIComponent(category)
 
-  let products: Product[] = []
-  try {
-    const raw = await withDbRetry(() =>
-      db.product.findMany({
-        where: { isActive: true, category: { name: decoded } },
-        include: { category: true, inventory: true },
-        orderBy: { name: 'asc' },
-      })
-    )
-    products = raw.map((p) => {
-      const stock = p.inventory?.availableQuantity ?? 0
-      return {
-        ...p,
-        category: p.category.name,
-        stock,
-        stockStatus: getStockStatus(stock, p.reorderLevel),
-        discountPercent: getDiscountPercent(p.mrp, p.sellingPrice),
-        description: p.description ?? undefined,
-      }
-    })
-  } catch (err) {
-    console.error('[CategoryPage] DB error:', err)
-  }
+  const rawProducts = await db.product.findMany({
+    where: { isActive: true, category: { name: decoded } },
+    include: { category: true, inventory: true },
+    orderBy: { name: 'asc' },
+  })
+
+  const products: Product[] = rawProducts.map((p) => {
+    const stock = p.inventory?.availableQuantity ?? 0
+    return {
+      ...p,
+      category: p.category.name,
+      stock,
+      stockStatus: getStockStatus(stock, p.reorderLevel),
+      discountPercent: getDiscountPercent(p.mrp, p.sellingPrice),
+      description: p.description ?? undefined,
+    }
+  })
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">

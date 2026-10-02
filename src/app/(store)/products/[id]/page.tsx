@@ -1,39 +1,30 @@
 import { notFound } from 'next/navigation'
 import Image from 'next/image'
-import { db, withDbRetry } from '@/lib/db'
+import { db } from '@/lib/db'
 import { getStockStatus, getDiscountPercent, formatPrice } from '@/lib/utils'
 import type { Product } from '@/types'
 import AddToCartButton from '@/components/product/AddToCartButton'
 import StockBadge from '@/components/ui/StockBadge'
 import { Phone, Mail } from 'lucide-react'
 
-export const dynamic = 'force-dynamic'
-
 interface Props {
   params: Promise<{ id: string }>
 }
 
 async function getProduct(id: string): Promise<Product | null> {
-  try {
-    const p = await withDbRetry(() =>
-      db.product.findUnique({
-        where: { id },
-        include: { category: true, inventory: true },
-      })
-    )
-    if (!p) return null
-    const stock = p.inventory?.availableQuantity ?? 0
-    return {
-      ...p,
-      category: p.category.name,
-      stock,
-      stockStatus: getStockStatus(stock, p.reorderLevel),
-      discountPercent: getDiscountPercent(p.mrp, p.sellingPrice),
-      description: p.description ?? undefined,
-    }
-  } catch (err) {
-    console.error('[ProductDetailPage] DB error:', err)
-    return null
+  const p = await db.product.findUnique({
+    where: { id },
+    include: { category: true, inventory: true },
+  })
+  if (!p) return null
+  const stock = p.inventory?.availableQuantity ?? 0
+  return {
+    ...p,
+    category: p.category.name,
+    stock,
+    stockStatus: getStockStatus(stock, p.reorderLevel),
+    discountPercent: getDiscountPercent(p.mrp, p.sellingPrice),
+    description: p.description ?? undefined,
   }
 }
 

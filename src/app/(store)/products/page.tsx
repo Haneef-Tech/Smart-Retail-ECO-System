@@ -1,48 +1,41 @@
-import { db, withDbRetry } from '@/lib/db'
+import { db } from '@/lib/db'
 import { getStockStatus, getDiscountPercent } from '@/lib/utils'
 import ProductGrid from '@/components/product/ProductGrid'
 import type { Product } from '@/types'
 import { Phone, Mail, Headphones } from 'lucide-react'
-
-export const dynamic = 'force-dynamic'
 
 interface Props {
   searchParams: Promise<{ search?: string; category?: string }>
 }
 
 async function getProducts(search?: string, category?: string): Promise<Product[]> {
-  try {
-    const where: Record<string, unknown> = { isActive: true }
-    if (category) where.category = { name: category }
-    if (search) {
-      where.OR = [
-        { name: { contains: search } },
-        { sku: { contains: search } },
-        { description: { contains: search } },
-      ]
-    }
-    const products = await withDbRetry(() =>
-      db.product.findMany({
-        where,
-        include: { category: true, inventory: true },
-        orderBy: { name: 'asc' },
-      })
-    )
-    return products.map((p) => {
-      const stock = p.inventory?.availableQuantity ?? 0
-      return {
-        ...p,
-        category: p.category.name,
-        stock,
-        stockStatus: getStockStatus(stock, p.reorderLevel),
-        discountPercent: getDiscountPercent(p.mrp, p.sellingPrice),
-        description: p.description ?? undefined,
-      }
-    })
-  } catch (err) {
-    console.error('[ProductsPage] DB error:', err)
-    return []
+  const where: Record<string, unknown> = { isActive: true }
+  if (category) {
+    where.category = { name: category }
   }
+  if (search) {
+    where.OR = [
+      { name: { contains: search } },
+      { sku: { contains: search } },
+      { description: { contains: search } },
+    ]
+  }
+  const products = await db.product.findMany({
+    where,
+    include: { category: true, inventory: true },
+    orderBy: { name: 'asc' },
+  })
+  return products.map((p) => {
+    const stock = p.inventory?.availableQuantity ?? 0
+    return {
+      ...p,
+      category: p.category.name,
+      stock,
+      stockStatus: getStockStatus(stock, p.reorderLevel),
+      discountPercent: getDiscountPercent(p.mrp, p.sellingPrice),
+      description: p.description ?? undefined,
+    }
+  })
 }
 
 export default async function ProductsPage({ searchParams }: Props) {
