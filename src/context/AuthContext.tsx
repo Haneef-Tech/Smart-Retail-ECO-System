@@ -28,7 +28,14 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({} as AuthContextType)
 
 const ADMIN_EMAIL = 'aluruhaneef1@gmail.com'
-const ADMIN_PASSWORD = 'haneef123'
+const ADMIN_PASSWORDS = ['haneef123', 'haneef@123']
+
+// Write the session cookie before navigating so the middleware sees it on the next request
+async function persistSessionCookie(u: User | null) {
+  if (!u) return
+  const token = await u.getIdToken()
+  document.cookie = `firebase-token=${token}; path=/; max-age=86400; SameSite=Lax`
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | MockUser | null>(null)
@@ -94,13 +101,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const trimmedPwd = password.trim()
 
     // Special handling for admin default credentials
-    if (trimmedEmail === ADMIN_EMAIL && trimmedPwd === ADMIN_PASSWORD) {
+    if (trimmedEmail === ADMIN_EMAIL && ADMIN_PASSWORDS.includes(trimmedPwd)) {
       try {
-        await signInWithEmailAndPassword(auth, trimmedEmail, trimmedPwd)
+        const cred = await signInWithEmailAndPassword(auth, trimmedEmail, trimmedPwd)
+        setUser(cred.user)
+        await persistSessionCookie(cred.user)
       } catch (err: unknown) {
         // Auto-create admin account in Firebase Auth if not registered yet
         try {
-          await createUserWithEmailAndPassword(auth, trimmedEmail, trimmedPwd)
+          const cred = await createUserWithEmailAndPassword(auth, trimmedEmail, trimmedPwd)
+          setUser(cred.user)
+          await persistSessionCookie(cred.user)
         } catch {
           // Fallback local admin session if Firebase network fails
           const adminObj = { uid: 'admin-uid-haneef123', email: ADMIN_EMAIL, token: 'admin-token-haneef123' }
@@ -118,7 +129,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Normal customer login
     try {
-      await signInWithEmailAndPassword(auth, trimmedEmail, trimmedPwd)
+      const cred = await signInWithEmailAndPassword(auth, trimmedEmail, trimmedPwd)
+      setUser(cred.user)
+      await persistSessionCookie(cred.user)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Login failed'
       if (msg.includes('user-not-found') || msg.includes('invalid-credential')) {
