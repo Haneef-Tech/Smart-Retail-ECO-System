@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { Eye, EyeOff, LogIn } from 'lucide-react'
@@ -9,7 +9,7 @@ import { useAuth } from '@/context/AuthContext'
 export default function LoginPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { login } = useAuth()
+  const { login, user, loading: authLoading, isAdmin } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPwd, setShowPwd] = useState(false)
@@ -17,6 +17,12 @@ export default function LoginPage() {
   const [error, setError] = useState('')
 
   const redirect = searchParams.get('redirect')
+
+  // Already signed in (e.g. bounced here by the middleware) — send the user on
+  useEffect(() => {
+    if (authLoading || !user) return
+    router.replace(isAdmin ? '/admin' : redirect || '/')
+  }, [authLoading, user, isAdmin, redirect, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
