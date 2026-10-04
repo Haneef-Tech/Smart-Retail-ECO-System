@@ -4,9 +4,11 @@ import fs from 'fs'
 import os from 'os'
 
 function getDatabaseUrl(): string {
-  // If user provided a remote database connection (e.g. Postgres, Supabase, Neon)
+  // The Prisma schema uses the SQLite provider, which only accepts `file:` URLs.
+  // A non-file DATABASE_URL (e.g. a Postgres connection string configured on the
+  // hosting platform) would fail datasource validation, so it is ignored here.
   if (process.env.DATABASE_URL && !process.env.DATABASE_URL.startsWith('file:')) {
-    return process.env.DATABASE_URL
+    console.warn('[lib/db] Ignoring non-SQLite DATABASE_URL; using bundled prisma/dev.db')
   }
 
   const sourceDbPath = path.resolve(process.cwd(), 'prisma', 'dev.db')
