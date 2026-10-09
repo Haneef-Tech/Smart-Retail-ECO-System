@@ -53,37 +53,47 @@ const EMPTY_METRICS = {
 
 async function getLiveMetrics() {
   try {
-    const [products, suppliers, allOrders, purchases, storeSalesRecords] = await withDbRetry(() =>
-      Promise.all([
-        db.product.findMany({
-          where: { isActive: true },
-          include: {
-        category: { select: { name: true } },
-        supplier: { select: { name: true, leadTimeDays: true } },
-        inventory: true,
-      },
-      orderBy: { name: 'asc' },
-    }),
-    db.supplier.findMany({
-      include: { _count: { select: { products: true, purchases: true } } },
-      orderBy: { code: 'asc' },
-    }),
-    db.order.findMany({
-      orderBy: { createdAt: 'desc' },
-      include: {
-        customer: { select: { name: true, phone: true, email: true } },
-        orderItems: true,
-        bill: { select: { billNumber: true, paymentStatus: true } },
-      },
-    }),
-    db.purchase.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 6,
-      include: { supplier: true, purchaseItems: true },
-    }),
-    db.storeSaleRecord.count(),
-  ])
-)
+    const products = await withDbRetry(() =>
+      db.product.findMany({
+        where: { isActive: true },
+        include: {
+          category: { select: { name: true } },
+          supplier: { select: { name: true, leadTimeDays: true } },
+          inventory: true,
+        },
+        orderBy: { name: 'asc' },
+      })
+    ).catch(() => [])
+
+    const suppliers = await withDbRetry(() =>
+      db.supplier.findMany({
+        include: { _count: { select: { products: true, purchases: true } } },
+        orderBy: { code: 'asc' },
+      })
+    ).catch(() => [])
+
+    const allOrders = await withDbRetry(() =>
+      db.order.findMany({
+        orderBy: { createdAt: 'desc' },
+        include: {
+          customer: { select: { name: true, phone: true, email: true } },
+          orderItems: true,
+          bill: { select: { billNumber: true, paymentStatus: true } },
+        },
+      })
+    ).catch(() => [])
+
+    const purchases = await withDbRetry(() =>
+      db.purchase.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 6,
+        include: { supplier: true, purchaseItems: true },
+      })
+    ).catch(() => [])
+
+    const storeSalesRecords = await withDbRetry(() =>
+      db.storeSaleRecord.count()
+    ).catch(() => 0)
 
   // Current Date Boundaries (Local / IST)
   const now = new Date()

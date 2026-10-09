@@ -43,13 +43,17 @@ function isTransientDbError(error: unknown): boolean {
   )
 }
 
-export async function withDbRetry<T>(fn: () => Promise<T>, delayMs = 3000): Promise<T> {
-  try {
-    return await fn()
-  } catch (error) {
-    if (!isTransientDbError(error)) throw error
-    console.warn('[db] transient connection failure — waiting for Neon wakeup, retrying…')
-    await new Promise((r) => setTimeout(r, delayMs))
-    return fn()
+export async function withDbRetry<T>(fn: () => Promise<T>, retries = 2, delayMs = 3000): Promise<T> {
+  let lastError: unknown
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      return await fn()
+    } catch (error) {
+      lastError = error
+      if (!isTransientDbError(error) || attempt === retries) throw error
+      console.warn(`[db] transient connection failure (attempt ${attempt + 1}/${retries + 1}) — waiting for Neon wakeup...`)
+      await new Promise((r) => setTimeout(r, delayMs))
+    }
   }
+  throw lastError
 }
